@@ -21,6 +21,7 @@ class Admin(db.Model, TimestampMixin, UserMixin):
     
     # Status
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    is_super_admin = db.Column(db.Boolean, default=False, nullable=False)  # Super admin bypasses all permissions
     
     # Last login tracking
     last_login = db.Column(db.DateTime, nullable=True)
@@ -53,6 +54,10 @@ class Admin(db.Model, TimestampMixin, UserMixin):
     def is_receptionist(self):
         """Check if admin is a receptionist"""
         return self.role == 'receptionist'
+    
+    def is_super_admin_user(self):
+        """Check if admin is super admin"""
+        return self.is_super_admin
     
     def __repr__(self):
         return f"<Admin {self.username} ({self.first_name} {self.last_name}) - {self.role}>"

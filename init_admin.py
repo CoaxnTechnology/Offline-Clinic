@@ -16,7 +16,8 @@ DEFAULT_ADMINS = [
         'first_name': 'Super',
         'last_name': 'Admin',
         'role': 'doctor',  # Default role
-        'phone': ''
+        'phone': '',
+        'is_super_admin': True  # Super admin flag
     },
     {
         'username': 'doctor1',
@@ -76,7 +77,8 @@ def create_admins():
                 last_name=admin_data['last_name'],
                 role=admin_data['role'],
                 phone=admin_data.get('phone', ''),
-                is_active=True
+                is_active=True,
+                is_super_admin=admin_data.get('is_super_admin', False)
             )
             admin.set_password(admin_data['password'])
             

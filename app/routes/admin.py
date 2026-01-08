@@ -1,0 +1,507 @@
+from flask import Blueprint, request, jsonify
+from flask_login import login_required, current_user
+from app.models import Admin
+from app.extensions import db
+from app.utils.decorators import require_role
+from datetime import datetime
+
+admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
+
+
+def require_super_admin_or_self(admin_id=None):
+    """
+    Helper function to check if user is super admin or accessing own profile
+    """
+    if current_user.is_super_admin:
+        return True
+    if admin_id and current_user.id == admin_id:
+        return True
+    return False
+
+
+@admin_bp.route('', methods=['GET'])
+@login_required
+def list_admins():
+    """
+    List all admin users
+    Query params: role, is_active, page, limit
+    """
+    # Step 1: Get query parameters
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 20, type=int)
+    filter_role = request.args.get('role', type=str)
+    filter_active = request.args.get('is_active', type=str)
+    
+    # Step 2: Validate pagination
+    if page < 1:
+        page = 1
+    if limit < 1 or limit > 100:
+        limit = 20
+    
+    # Step 3: Start building query
+    query = Admin.query
+    
+    # Step 4: Apply filters
+    if filter_role:
+        query = query.filter(Admin.role == filter_role)
+    
+    if filter_active:
+        is_active_bool = filter_active.lower() == 'true'
+        query = query.filter(Admin.is_active == is_active_bool)
+    
+    # Step 5: Get total count
+    total = query.count()
+    
+    # Step 6: Apply pagination
+    admins = query.order_by(Admin.created_at.desc()).paginate(
+        page=page,
+        per_page=limit,
+        error_out=False
+    )
+    
+    # Step 7: Format response (exclude password_hash)
+    result = []
+    for admin in admins.items:
+        result.append({
+            'id': admin.id,
+            'username': admin.username,
+            'email': admin.email,
+            'first_name': admin.first_name,
+            'last_name': admin.last_name,
+            'phone': admin.phone,
+            'role': admin.role,
+            'is_active': admin.is_active,
+            'is_super_admin': admin.is_super_admin,
+            'last_login': admin.last_login.isoformat() if admin.last_login else None,
+            'login_count': admin.login_count,
+            'created_at': admin.created_at.isoformat()
+        })
+    
+    return jsonify({
+        'success': True,
+        'data': result,
+        'pagination': {
+            'page': page,
+            'limit': limit,
+            'total': total,
+            'pages': admins.pages,
+            'has_next': admins.has_next,
+            'has_prev': admins.has_prev
+        }
+    }), 200
+
+
+@admin_bp.route('/<int:admin_id>', methods=['GET'])
+@login_required
+def get_admin(admin_id):
+    """
+    Get single admin by ID
+    """
+    # Step 1: Find admin
+    admin = Admin.query.get(admin_id)
+    
+    # Step 2: Check if admin exists
+    if not admin:
+        return jsonify({
+            'success': False,
+            'error': 'Admin not found'
+        }), 404
+    
+    # Step 3: Check permission (super admin or own profile)
+    if not require_super_admin_or_self(admin_id):
+        return jsonify({
+            'success': False,
+            'error': 'Permission denied'
+        }), 403
+    
+    # Step 4: Return admin data
+    return jsonify({
+        'success': True,
+        'data': {
+            'id': admin.id,
+            'username': admin.username,
+            'email': admin.email,
+            'first_name': admin.first_name,
+            'last_name': admin.last_name,
+            'phone': admin.phone,
+            'role': admin.role,
+            'is_active': admin.is_active,
+            'is_super_admin': admin.is_super_admin,
+            'last_login': admin.last_login.isoformat() if admin.last_login else None,
+            'login_count': admin.login_count,
+            'created_at': admin.created_at.isoformat(),
+            'updated_at': admin.updated_at.isoformat()
+        }
+    }), 200
+
+
+@admin_bp.route('', methods=['POST'])
+@login_required
+def create_admin():
+    """
+    Create new admin user
+    Access: Super admin only (is_super_admin=True)
+    Roles: doctor, technician, receptionist
+    """
+    # Step 1: Check if user is super admin
+    if not current_user.is_super_admin:
+        return jsonify({
+            'success': False,
+            'error': 'Permission denied. Only super admin can create new admins.'
+        }), 403
+    
+    # Step 2: Get data from request
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({
+            'success': False,
+            'error': 'Request body must be JSON'
+        }), 400
+    
+    # Step 3: Validate required fields
+    required_fields = ['username', 'email', 'password', 'first_name', 'last_name', 'role']
+    for field in required_fields:
+        if not data.get(field):
+            return jsonify({
+                'success': False,
+                'error': f'Field "{field}" is required'
+            }), 400
+    
+    # Step 4: Validate role
+    valid_roles = ['doctor', 'technician', 'receptionist']
+    if data['role'] not in valid_roles:
+        return jsonify({
+            'success': False,
+            'error': f'Invalid role. Valid roles: {", ".join(valid_roles)}'
+        }), 400
+    
+    # Step 5: Check if username already exists
+    existing_username = Admin.query.filter_by(username=data['username']).first()
+    if existing_username:
+        return jsonify({
+            'success': False,
+            'error': f'Username "{data["username"]}" already exists'
+        }), 400
+    
+    # Step 6: Check if email already exists
+    existing_email = Admin.query.filter_by(email=data['email']).first()
+    if existing_email:
+        return jsonify({
+            'success': False,
+            'error': f'Email "{data["email"]}" already exists'
+        }), 400
+    
+    # Step 7: Validate password length
+    if len(data['password']) < 6:
+        return jsonify({
+            'success': False,
+            'error': 'Password must be at least 6 characters long'
+        }), 400
+    
+    # Step 8: Create new admin
+    try:
+        admin = Admin(
+            username=data['username'],
+            email=data['email'],
+            first_name=data['first_name'],
+            last_name=data['last_name'],
+            phone=data.get('phone'),
+            role=data['role'],
+            is_active=data.get('is_active', True),
+            is_super_admin=False  # Never create super admin via API
+        )
+        admin.set_password(data['password'])
+        
+        db.session.add(admin)
+        db.session.commit()
+        
+        # Step 9: Return created admin (without password)
+        return jsonify({
+            'success': True,
+            'data': {
+                'id': admin.id,
+                'username': admin.username,
+                'email': admin.email,
+                'first_name': admin.first_name,
+                'last_name': admin.last_name,
+                'phone': admin.phone,
+                'role': admin.role,
+                'is_active': admin.is_active,
+                'created_at': admin.created_at.isoformat()
+            },
+            'message': f'Admin user "{admin.username}" created successfully'
+        }), 201
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'error': f'Failed to create admin: {str(e)}'
+        }), 500
+
+
+@admin_bp.route('/<int:admin_id>', methods=['PUT'])
+@login_required
+def update_admin(admin_id):
+    """
+    Update admin information
+    Access: Super admin or own profile
+    """
+    # Step 1: Find admin
+    admin = Admin.query.get(admin_id)
+    if not admin:
+        return jsonify({
+            'success': False,
+            'error': 'Admin not found'
+        }), 404
+    
+    # Step 2: Check permission
+    if not require_super_admin_or_self(admin_id):
+        return jsonify({
+            'success': False,
+            'error': 'Permission denied'
+        }), 403
+    
+    # Step 3: Get update data
+    data = request.get_json()
+    if not data:
+        return jsonify({
+            'success': False,
+            'error': 'Request body must be JSON'
+        }), 400
+    
+    # Step 4: Update fields
+    try:
+        # List of updatable fields
+        updatable_fields = ['email', 'first_name', 'last_name', 'phone']
+        
+        # Super admin can also update role and is_active
+        if current_user.is_super_admin:
+            updatable_fields.extend(['role', 'is_active'])
+        
+        for field in updatable_fields:
+            if field in data:
+                # Validate role if updating
+                if field == 'role':
+                    valid_roles = ['doctor', 'technician', 'receptionist']
+                    if data[field] not in valid_roles:
+                        return jsonify({
+                            'success': False,
+                            'error': f'Invalid role. Valid roles: {", ".join(valid_roles)}'
+                        }), 400
+                
+                # Check for duplicate email
+                if field == 'email' and data[field] != admin.email:
+                    existing_email = Admin.query.filter_by(email=data[field]).first()
+                    if existing_email:
+                        return jsonify({
+                            'success': False,
+                            'error': 'Email already exists'
+                        }), 400
+                
+                setattr(admin, field, data[field])
+        
+        # Prevent changing is_super_admin via API
+        if 'is_super_admin' in data:
+            return jsonify({
+                'success': False,
+                'error': 'Cannot change super admin status via API'
+            }), 400
+        
+        db.session.commit()
+        
+        # Step 5: Return updated admin
+        return jsonify({
+            'success': True,
+            'data': {
+                'id': admin.id,
+                'username': admin.username,
+                'email': admin.email,
+                'first_name': admin.first_name,
+                'last_name': admin.last_name,
+                'phone': admin.phone,
+                'role': admin.role,
+                'is_active': admin.is_active,
+                'updated_at': admin.updated_at.isoformat()
+            },
+            'message': 'Admin updated successfully'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'error': f'Failed to update admin: {str(e)}'
+        }), 500
+
+
+@admin_bp.route('/<int:admin_id>/password', methods=['PUT'])
+@login_required
+def change_password(admin_id):
+    """
+    Change admin password
+    Access: Own profile only (or super admin)
+    """
+    # Step 1: Find admin
+    admin = Admin.query.get(admin_id)
+    if not admin:
+        return jsonify({
+            'success': False,
+            'error': 'Admin not found'
+        }), 404
+    
+    # Step 2: Check permission (own profile or super admin)
+    if not require_super_admin_or_self(admin_id):
+        return jsonify({
+            'success': False,
+            'error': 'Permission denied. You can only change your own password.'
+        }), 403
+    
+    # Step 3: Get password data
+    data = request.get_json()
+    if not data:
+        return jsonify({
+            'success': False,
+            'error': 'Request body must be JSON'
+        }), 400
+    
+    new_password = data.get('new_password')
+    if not new_password:
+        return jsonify({
+            'success': False,
+            'error': 'Field "new_password" is required'
+        }), 400
+    
+    # Step 4: Validate password length
+    if len(new_password) < 6:
+        return jsonify({
+            'success': False,
+            'error': 'Password must be at least 6 characters long'
+        }), 400
+    
+    # Step 5: If not super admin, require old password
+    if not current_user.is_super_admin:
+        old_password = data.get('old_password')
+        if not old_password:
+            return jsonify({
+                'success': False,
+                'error': 'Field "old_password" is required'
+            }), 400
+        
+        if not admin.check_password(old_password):
+            return jsonify({
+                'success': False,
+                'error': 'Current password is incorrect'
+            }), 400
+    
+    # Step 6: Update password
+    try:
+        admin.set_password(new_password)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Password changed successfully'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'error': f'Failed to change password: {str(e)}'
+        }), 500
+
+
+@admin_bp.route('/<int:admin_id>', methods=['DELETE'])
+@login_required
+def delete_admin(admin_id):
+    """
+    Deactivate admin (soft delete by setting is_active=False)
+    Access: Super admin only
+    """
+    # Step 1: Check if user is super admin
+    if not current_user.is_super_admin:
+        return jsonify({
+            'success': False,
+            'error': 'Permission denied. Only super admin can deactivate admins.'
+        }), 403
+    
+    # Step 2: Find admin
+    admin = Admin.query.get(admin_id)
+    if not admin:
+        return jsonify({
+            'success': False,
+            'error': 'Admin not found'
+        }), 404
+    
+    # Step 3: Prevent deleting super admin
+    if admin.is_super_admin:
+        return jsonify({
+            'success': False,
+            'error': 'Cannot deactivate super admin'
+        }), 400
+    
+    # Step 4: Prevent deleting self
+    if admin.id == current_user.id:
+        return jsonify({
+            'success': False,
+            'error': 'Cannot deactivate your own account'
+        }), 400
+    
+    # Step 5: Deactivate admin
+    try:
+        admin.is_active = False
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Admin "{admin.username}" deactivated successfully'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'error': f'Failed to deactivate admin: {str(e)}'
+        }), 500
+
+
+@admin_bp.route('/<int:admin_id>/activate', methods=['PUT'])
+@login_required
+def activate_admin(admin_id):
+    """
+    Activate admin (set is_active=True)
+    Access: Super admin only
+    """
+    # Step 1: Check if user is super admin
+    if not current_user.is_super_admin:
+        return jsonify({
+            'success': False,
+            'error': 'Permission denied. Only super admin can activate admins.'
+        }), 403
+    
+    # Step 2: Find admin
+    admin = Admin.query.get(admin_id)
+    if not admin:
+        return jsonify({
+            'success': False,
+            'error': 'Admin not found'
+        }), 404
+    
+    # Step 3: Activate admin
+    try:
+        admin.is_active = True
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'message': f'Admin "{admin.username}" activated successfully'
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'success': False,
+            'error': f'Failed to activate admin: {str(e)}'
+        }), 500
