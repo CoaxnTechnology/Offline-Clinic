@@ -109,7 +109,6 @@ def get_patient(patient_id):
         'success': True,
         'data': {
             'id': patient.id,
-            'clinic_id': patient.clinic_id,
             'title': patient.title,
             'first_name': patient.first_name,
             'last_name': patient.last_name,
@@ -187,7 +186,6 @@ def create_patient():
     try:
         patient = Patient(
             id=data['id'],
-            clinic_id=data.get('clinic_id'),
             title=data.get('title'),
             first_name=data['first_name'],
             last_name=data['last_name'],
@@ -278,7 +276,7 @@ def update_patient(patient_id):
         
         # List of updatable fields
         updatable_fields = [
-            'clinic_id', 'title', 'first_name', 'last_name', 'gender',
+            'title', 'first_name', 'last_name', 'gender',
             'birth_date', 'phone', 'email', 'identity_number', 'height',
             'weight', 'blood_group', 'notes', 'primary_doctor',
             'new_patient', 'demographics'
@@ -384,8 +382,7 @@ def search_patients():
         Patient.last_name.ilike(f'%{query}%'),
         Patient.phone.ilike(f'%{query}%'),
         Patient.email.ilike(f'%{query}%'),
-        Patient.id.ilike(f'%{query}%'),
-        Patient.clinic_id.ilike(f'%{query}%')
+        Patient.id.ilike(f'%{query}%')
     )
     
     # Step 3: Execute search
