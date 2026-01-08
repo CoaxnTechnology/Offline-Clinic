@@ -35,8 +35,9 @@ def create_app():
         from .models import Patient, Appointment, Admin  # This is essential
         
         # Register blueprints
-        from .routes import auth_bp, patient_bp
+        from .routes import auth_bp, patient_bp, appointment_bp
         app.register_blueprint(auth_bp)
         app.register_blueprint(patient_bp)
+        app.register_blueprint(appointment_bp)
 
     return app
