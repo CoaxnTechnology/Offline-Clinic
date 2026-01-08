@@ -1,0 +1,34 @@
+[project]
+name = "clinic-dicom-flask"
+version = "0.1.0"
+description = "Offline Clinic Workflow + DICOM Imaging & Reporting System (Flask Backend)"
+authors = [{ name = "Your Clinic Team", email = "dev@yourclinic.com" }]
+readme = "README.md"
+requires-python = ">=3.13,<3.14" #Explicitly set this – avoids the warning!
+dependencies = [
+    "Flask>=3.0.3",
+    "Flask-SQLAlchemy>=3.1.1",
+    "Flask-Migrate>=4.0.7",
+    "Flask-Login>=0.6.3",
+    "Flask-WTF>=1.2.1",
+    "WTForms>=3.1.2",
+    "gunicorn>=22.0.0",
+    "psycopg2-binary>=2.9.9",
+    "pynetdicom>=2.1.0",
+    "pydicom>=2.4.4",
+    "celery>=5.4.0",
+    "redis>=5.0.3",
+    "Pillow>=10.3.0",
+    "weasyprint>=62.0",
+    "Flask-Bcrypt>=1.0.1",
+    "python-dotenv>=1.0.1",
+    "fuzzywuzzy>=0.18.0",
+    "python-levenshtein>=0.25.0",
+    "flask-socketio>=5.3.6",
+    "eventlet>=0.36.1",
+    "structlog>=24.1.0",
+    "requests>=2.32.5",
+]
+
+
+

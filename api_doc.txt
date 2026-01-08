@@ -1,0 +1,269 @@
+Complete API design for clinic system
+
+
+  Authentication API
+
+  Login
+  • POST /api/auth/login - username, password → token + admin info
+  • POST /api/auth/logout - clear session
+  • GET /api/auth/me - get current logged-in admin
+
+
+  Patient API
+
+  List patients
+  • GET /api/patients - query params: search, page, limit, role filter
+  • Returns: list of patients
+
+  Get patient
+  • GET /api/patients/<id> - single patient details
+
+  Create patient
+  • POST /api/patients - body: patient data
+  • Access: receptionist, doctor
+
+  Update patient
+  • PUT /api/patients/<id> - update patient info
+  • Access: receptionist, doctor
+
+  Delete patient
+  • DELETE /api/patients/<id> - soft delete or hard delete
+  • Access: receptionist, doctor
+
+  Search patients
+  • GET /api/patients/search?q=<query> - search by name, phone, ID
+
+
+  Appointment API
+
+  List appointments
+  • GET /api/appointments - query params: date, patient_id, doctor, status, page
+  • Returns: list of appointments
+
+  Get appointment
+  • GET /api/appointments/<id> - single appointment details
+
+  Create appointment
+  • POST /api/appointments - body: patient_id, doctor, date, time, department
+  • Access: receptionist, doctor
+
+  Update appointment
+  • PUT /api/appointments/<id> - update appointment details
+  • Access: receptionist, doctor, technician
+
+  Update appointment status
+  • PUT /api/appointments/<id>/status - change status (Waiting, In-Room, In-Scan,
+    Review, Completed)
+  • Access: doctor, technician
+
+  Delete appointment
+  • DELETE /api/appointments/<id>
+  • Access: receptionist, doctor
+
+  Schedule appointment
+  • POST /api/appointments/schedule - bulk scheduling
+  • Access: receptionist
+
+
+  DICOM API
+
+  List DICOM studies
+  • GET /api/dicom/studies - query params: patient_id, date, page
+  • Returns: list of DICOM studies
+  • Access: doctor, technician
+
+  Get DICOM study
+  • GET /api/dicom/studies/<study_id> - study details with series list
+  • Access: doctor, technician
+
+  List DICOM images
+  • GET /api/dicom/studies/<study_id>/images - images in study
+  • Access: doctor, technician
+
+  View DICOM image
+  • GET /api/dicom/images/<image_id> - image metadata
+  • GET /api/dicom/images/<image_id>/thumbnail - thumbnail image
+  • Access: doctor, technician
+
+  Download DICOM
+  • GET /api/dicom/images/<image_id>/download - download DICOM file
+  • Access: doctor
+
+  Send MWL (Modality Worklist)
+  • POST /api/dicom/mwl/send - body: patient_id or appointment_id
+  • Sends worklist to ultrasound machine
+  • Access: receptionist, technician
+
+  Receive DICOM
+  • POST /api/dicom/receive - receives DICOM from machine
+  • Internal endpoint (called by DICOM storage server)
+  • Access: technician (system)
+
+  Delete DICOM study
+  • DELETE /api/dicom/studies/<study_id>
+  • Access: doctor, technician
+
+
+  Report API
+
+  List reports
+  • GET /api/reports - query params: patient_id, status, doctor, page
+  • Returns: list of reports
+  • Access: doctor, technician
+
+  Get report
+  • GET /api/reports/<id> - report details with measurements
+  • Access: doctor, technician
+
+  Create report
+  • POST /api/reports - body: patient_id, study_id, report data
+  • Access: doctor
+
+  Update report
+  • PUT /api/reports/<id> - update report content
+  • Access: doctor
+
+  Finalize report
+  • PUT /api/reports/<id>/finalize - mark report as finalized
+  • Access: doctor
+
+  Delete report
+  • DELETE /api/reports/<id>
+  • Access: doctor
+
+  Generate PDF report
+  • GET /api/reports/<id>/pdf - generate and download PDF
+  • Access: doctor
+
+
+  Admin management API
+
+  List admins
+  • GET /api/admins - query params: role, is_active
+  • Returns: list of admins
+  • Access: all admins (filtered by role)
+
+  Get admin
+  • GET /api/admins/<id> - admin details
+  • Access: own profile or admin management
+
+  Create admin
+  • POST /api/admins - create new admin
+  • Access: admin management permission
+
+  Update admin
+  • PUT /api/admins/<id> - update admin info
+  • Access: own profile or admin management
+
+  Change password
+  • PUT /api/admins/<id>/password - change password
+  • Access: own profile only
+
+  Deactivate admin
+  • PUT /api/admins/<id>/deactivate - set is_active=False
+  • Access: admin management
+
+
+  Role-based access summary
+
+  Doctor can:
+  • View patients, appointments
+  • View/download DICOM
+  • Create/update/finalize reports
+  • Update appointment status
+
+  Technician can:
+  • View patients, appointments
+  • View DICOM
+  • Receive DICOM
+  • Send MWL
+  • Update appointment status
+
+   Receptionist can:
+  • Create/update patients
+  • Create/update/schedule appointments
+  • Send MWL
+  • View patients and appointments
+
+
+  API request flow
+
+  1. Client sends request with authentication token
+  2. Middleware validates token and loads admin
+  3. Check admin role for the endpoint
+  4. Execute business logic
+  5. Return JSON response
+
+
+  Response format
+
+  Success:
+
+     1 │{
+     2 │  "success": true,
+     3 │  "data": {...},
+     4 │  "message": "optional message"
+     5 │}
+
+  Error:
+
+     1 │{
+     2 │  "success": false,
+     3 │  "error": "Error message",
+     4 │  "code": 403
+     5 │}
+
+  List response:
+
+     1 │{
+     2 │  "success": true,
+     3 │  "data": [...],
+     4 │  "pagination": {
+     5 │    "page": 1,
+     6 │    "limit": 20,
+     7 │    "total": 100
+     8 │  }
+     9 │}
+
+
+  Status codes
+
+  • 200 - Success
+  • 201 - Created
+  • 400 - Bad Request
+  • 401 - Unauthorized
+  • 403 - Forbidden
+  • 404 - Not Found
+  • 500 - Server Error
+
+
+  Authentication method
+
+  • Token-based: JWT or session token
+  • Include token in header: Authorization: Bearer <token>
+  • Token contains: admin_id, role, expiration
+
+
+  Query parameters (common)
+
+  • page - page number
+  • limit - items per page
+  • search - search query
+  • sort - sort field
+  • order - asc/desc
+  • date - filter by date
+  • status - filter by status
+
+
+  File uploads
+
+  • DICOM images: POST with multipart/form-data
+  • Patient documents: POST with file upload
+  • Thumbnails: auto-generated, served via GET
+
+  Real-time updates
+
+  • WebSocket/SocketIO for:
+    • New DICOM received
+    • Appointment status changes
+    • Report finalized notifications
