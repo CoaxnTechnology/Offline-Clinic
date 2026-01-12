@@ -4,9 +4,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
-    SECRET_KEY = os.getenv('SECRET_KEY') or 'dev-secret-key-change-in-production'
-    
-    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL')
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
 
-    # Removed unused: SocketIO, Celery, file paths, session secure flags
+    DATABASE_URL = os.getenv("DATABASE_URL")
+
+   
+    if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+        DATABASE_URL = DATABASE_URL.replace(
+            "postgres://",
+            "postgresql+psycopg2://",
+            1
+        )
+
+    SQLALCHEMY_DATABASE_URI = DATABASE_URL
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
