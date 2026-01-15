@@ -1,0 +1,61 @@
+name: Deploy to Bluehost VPS
+
+on:
+  push:
+    branches:
+      - main  # Deploy on push to main branch
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Deploy to Bluehost VPS
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.BLUEHOST_HOST }}
+          username: ${{ secrets.BLUEHOST_USER }}
+          key: ${{ secrets.BLUEHOST_SSH_KEY }}
+          script: |
+            set -e  # Exit on error
+            
+            cd /var/www/Offline-Clinic
+            
+            # Backup current version (optional)
+            if [ -d ".git" ]; then
+              cp -r . ../Offline-Clinic-backup-$(date +%Y%m%d-%H%M%S) || true
+            fi
+            
+            # Pull latest code
+            git fetch origin
+            git reset --hard origin/main
+            
+            # Activate virtual environment
+            source venv/bin/activate
+            
+            # Install/update dependencies
+            pip install --upgrade pip
+            pip install -r requirements.txt
+            
+            # Run database migrations (tables auto-create)
+            export $(cat .env | xargs)
+            flask db upgrade
+            
+            # Restart application
+            sudo systemctl restart Offline-Clinic
+            
+            # Wait a moment for service to start
+            sleep 5
+            
+            # Health check
+            curl -f http://localhost:5000/health || exit 1
+            
+            # Check service status
+            sudo systemctl status Offline-Clinic --no-pager || true
+            
+            echo "✅ Deployment successful!"
+
