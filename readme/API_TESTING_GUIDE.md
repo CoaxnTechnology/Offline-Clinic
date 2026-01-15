@@ -380,6 +380,7 @@ GET /api/patients/search?q=john
 
 ---
 
+
 ## Appointment API
 
 ### 1. List Appointments

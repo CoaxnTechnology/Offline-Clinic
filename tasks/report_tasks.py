@@ -17,12 +17,13 @@ logger = logging.getLogger(__name__)
 
 
 @celery.task(bind=True, name='tasks.generate_pdf_report')
-def generate_pdf_report_task(self, study_instance_uid, output_path=None):
+def generate_pdf_report_task(self, study_instance_uid, report_id=None, output_path=None):
     """
-    Generate PDF report for a DICOM study
+    Generate PDF report for a DICOM study (async via Celery)
     
     Args:
         study_instance_uid: Study Instance UID
+        report_id: Report ID (optional, if provided will update report record)
         output_path: Optional output path for PDF
     
     Returns:
@@ -30,12 +31,23 @@ def generate_pdf_report_task(self, study_instance_uid, output_path=None):
     """
     try:
         with db.session.begin():
+            # If report_id provided, update report record
+            if report_id:
+                from app.models import Report
+                report = Report.query.get(report_id)
+                if report:
+                    report.status = 'generating'
+                    db.session.commit()
+            
             # Get all images for this study
             images = DicomImage.query.filter_by(
                 study_instance_uid=study_instance_uid
             ).all()
             
             if not images:
+                if report_id:
+                    report.status = 'failed'
+                    db.session.commit()
                 return {'success': False, 'error': 'No images found for study'}
             
             # Get patient info
@@ -51,15 +63,34 @@ def generate_pdf_report_task(self, study_instance_uid, output_path=None):
                 output_path=output_path
             )
             
+            # Update report record if provided
+            if report_id:
+                report = Report.query.get(report_id)
+                if report:
+                    report.file_path = pdf_path
+                    if os.path.exists(pdf_path):
+                        report.file_size = os.path.getsize(pdf_path)
+                    report.status = 'completed'
+                    db.session.commit()
+            
             return {
                 'success': True,
                 'study_instance_uid': study_instance_uid,
+                'report_id': report_id,
                 'pdf_path': pdf_path,
                 'image_count': len(images)
             }
     
     except Exception as e:
         logger.error(f"Error generating PDF report: {e}", exc_info=True)
+        if report_id:
+            try:
+                report = Report.query.get(report_id)
+                if report:
+                    report.status = 'failed'
+                    db.session.commit()
+            except:
+                pass
         return {'success': False, 'error': str(e)}
 
 

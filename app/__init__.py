@@ -146,13 +146,14 @@ def create_app(config_name=None):
         from .models import Patient, Appointment, Admin, DicomImage, DicomMeasurement  # This is essential
         
         # Register blueprints
-        from .routes import auth_bp, patient_bp, appointment_bp, admin_bp, dicom_bp, health_bp
+        from .routes import auth_bp, patient_bp, appointment_bp, admin_bp, dicom_bp, health_bp, reporting_bp
         app.register_blueprint(health_bp)  # Register health check first
         app.register_blueprint(auth_bp)
         app.register_blueprint(patient_bp)
         app.register_blueprint(appointment_bp)
         app.register_blueprint(admin_bp)
         app.register_blueprint(dicom_bp)
+        app.register_blueprint(reporting_bp)
         
         # Auto-start DICOM servers if enabled (default: True)
         auto_start_dicom = os.getenv('AUTO_START_DICOM', 'true').lower() == 'true'
