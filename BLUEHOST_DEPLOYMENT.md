@@ -1,6 +1,8 @@
-# Deploying DICOM API on Bluehost - Complete Guide
+# Deploying DICOM API on Bluehost - Complete Guide (AlmaLinux)
 
 ## ⚠️ Important Limitations
+
+**Note:** This guide is for **AlmaLinux** (RHEL-based). If using Ubuntu/Debian, use `apt` instead of `dnf`.
 
 **Bluehost Shared Hosting:**
 - ❌ **No Python/Flask support** (only PHP)
@@ -68,25 +70,52 @@ pwd     # Should show: /root
 
 ```bash
 # Update system
-sudo apt update && sudo apt upgrade -y
+sudo dnf update -y
+
+# Install EPEL repository (for additional packages)
+sudo dnf install epel-release -y
 
 # Install Python 3.13 (or 3.11+)
-sudo apt install python3.13 python3.13-venv python3-pip -y
+# AlmaLinux 9 comes with Python 3.9 by default, install Python 3.11+ from EPEL or compile
+sudo dnf install python3 python3-pip python3-devel -y
+
+# For Python 3.13, you may need to compile from source or use pyenv
+# Alternative: Install Python 3.11 from EPEL
+sudo dnf install python3.11 python3.11-pip python3.11-devel -y
 
 # Install PostgreSQL
-sudo apt install postgresql postgresql-contrib -y
+sudo dnf install postgresql postgresql-server postgresql-contrib -y
+
+# Initialize PostgreSQL database (first time only)
+sudo postgresql-setup --initdb
+
+# Start and enable PostgreSQL
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
 
 # Install Redis (for Celery)
-sudo apt install redis-server -y
+sudo dnf install redis -y
+
+# Start and enable Redis
+sudo systemctl start redis
+sudo systemctl enable redis
 
 # Install Git
-sudo apt install git -y
+sudo dnf install git -y
 
 # Install Nginx (for reverse proxy)
-sudo apt install nginx -y
+sudo dnf install nginx -y
 
-# Install other dependencies
-sudo apt install build-essential libpq-dev python3-dev -y
+# Start and enable Nginx
+sudo systemctl start nginx
+sudo systemctl enable nginx
+
+# Install build tools and dependencies
+sudo dnf groupinstall "Development Tools" -y
+sudo dnf install gcc gcc-c++ make libpq-devel openssl-devel -y
+
+# Install WeasyPrint dependencies (for PDF generation)
+sudo dnf install cairo-devel pango-devel gdk-pixbuf2-devel libffi-devel -y
 ```
 
 ---
@@ -101,7 +130,19 @@ sudo -u postgres psql
 CREATE DATABASE clinic_db;
 CREATE USER clinic_user WITH PASSWORD 'your_secure_password';
 GRANT ALL PRIVILEGES ON DATABASE clinic_db TO clinic_user;
+ALTER USER clinic_user CREATEDB;  # Allow creating databases if needed
 \q
+
+# Note: Tables will be automatically created by 'flask db upgrade' command
+# No need to manually create tables - Flask-Migrate handles everything!
+
+# Configure PostgreSQL to allow local connections (if needed)
+# Edit /var/lib/pgsql/data/pg_hba.conf
+# Ensure line: local   all             all                                     peer
+# Or: host    all             all             127.0.0.1/32            md5
+
+# Restart PostgreSQL after config changes
+sudo systemctl restart postgresql
 ```
 
 **Note the connection string:**
@@ -123,12 +164,18 @@ git clone <your-repo-url> .
 # OR upload files via SFTP/SCP
 
 # Create virtual environment
-python3.13 -m venv venv
+# Use python3.11 if Python 3.13 not available
+python3 -m venv venv
+# OR: python3.11 -m venv venv
 source venv/bin/activate
 
 # Install dependencies
 pip install --upgrade pip
 pip install -r requirements.txt
+
+# If using uv (recommended)
+# Install uv first: curl -LsSf https://astral.sh/uv/install.sh | sh
+# Then: uv pip install -r requirements.txt
 ```
 
 ---
@@ -182,12 +229,25 @@ source venv/bin/activate
 # Set environment variables
 export DATABASE_URL=postgresql://clinic_user:your_secure_password@localhost:5432/clinic_db
 
-# Run migrations
+# Run migrations - This automatically creates ALL tables
+# Flask-Migrate will apply all migration files and create:
+# - patients table
+# - appointments table
+# - admins table
+# - dicom_images table
+# - dicom_measurements table
+# - reports table
+# - And all other tables defined in migrations
 flask db upgrade
 
-# Create admin user
+# Verify tables were created
+psql $DATABASE_URL -c "\dt"  # List all tables
+
+# Create admin user (optional - can also create via API)
 python init_admin.py
 ```
+
+**Note:** `flask db upgrade` automatically creates all database tables from migration files. No manual table creation needed!
 
 ---
 
@@ -210,28 +270,42 @@ chmod 755 /var/www/clinic-backend/reports
 ### Step 8: Configure Firewall
 
 ```bash
-# Install UFW if not installed
-sudo apt install ufw -y
+# AlmaLinux uses firewalld (not UFW)
+# Check if firewalld is installed and running
+sudo systemctl status firewalld
 
-# Allow SSH
-sudo ufw allow 22/tcp
+# If not installed, install it
+sudo dnf install firewalld -y
+sudo systemctl start firewalld
+sudo systemctl enable firewalld
+
+# Allow SSH (important - do this first!)
+sudo firewall-cmd --permanent --add-service=ssh
 
 # Allow HTTP/HTTPS
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
 
 # Allow DICOM ports
-sudo ufw allow 11112/tcp
-sudo ufw allow 11113/tcp
+sudo firewall-cmd --permanent --add-port=11112/tcp
+sudo firewall-cmd --permanent --add-port=11113/tcp
 
 # Allow Flask port (if not using Nginx)
-sudo ufw allow 5000/tcp
+sudo firewall-cmd --permanent --add-port=5000/tcp
 
-# Enable firewall
-sudo ufw enable
+# Reload firewall to apply changes
+sudo firewall-cmd --reload
 
 # Check status
-sudo ufw status
+sudo firewall-cmd --list-all
+
+# Alternative: If using iptables instead of firewalld
+# sudo iptables -A INPUT -p tcp --dport 22 -j ACCEPT
+# sudo iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+# sudo iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+# sudo iptables -A INPUT -p tcp --dport 11112 -j ACCEPT
+# sudo iptables -A INPUT -p tcp --dport 11113 -j ACCEPT
+# sudo service iptables save
 ```
 
 ---
@@ -276,8 +350,14 @@ sudo systemctl restart nginx
 
 **Using Let's Encrypt:**
 ```bash
-sudo apt install certbot python3-certbot-nginx -y
+# Install certbot
+sudo dnf install certbot python3-certbot-nginx -y
+
+# Get SSL certificate
 sudo certbot --nginx -d your-domain.com -d www.your-domain.com
+
+# Auto-renewal (certbot sets this up automatically)
+# Test renewal: sudo certbot renew --dry-run
 ```
 
 **Update Nginx config** to use HTTPS (certbot does this automatically).
@@ -299,7 +379,9 @@ After=network.target postgresql.service redis.service
 
 [Service]
 Type=simple
-User=www-data
+User=apache
+# AlmaLinux uses 'apache' user, not 'www-data'
+# If apache user doesn't exist, create it: sudo useradd -r -s /bin/false apache
 WorkingDirectory=/var/www/clinic-backend
 Environment="PATH=/var/www/clinic-backend/venv/bin"
 EnvironmentFile=/var/www/clinic-backend/.env
@@ -307,8 +389,21 @@ ExecStart=/var/www/clinic-backend/venv/bin/gunicorn --bind 0.0.0.0:5000 --worker
 Restart=always
 RestartSec=10
 
+# SELinux context (if SELinux is enabled)
+# SELinuxContext=system_u:system_r:httpd_t:s0
+
 [Install]
 WantedBy=multi-user.target
+```
+
+**Set proper permissions:**
+```bash
+# Set ownership
+sudo chown -R apache:apache /var/www/clinic-backend
+
+# Set directory permissions
+sudo chmod 755 /var/www/clinic-backend
+sudo chmod 644 /var/www/clinic-backend/.env
 ```
 
 **Enable and start service:**
@@ -341,7 +436,10 @@ curl http://your-domain.com/health
 
 **Check DICOM ports:**
 ```bash
-netstat -tuln | grep -E "11112|11113|5000"
+# AlmaLinux uses ss or netstat
+sudo ss -tuln | grep -E "11112|11113|5000"
+# OR
+sudo netstat -tuln | grep -E "11112|11113|5000"
 ```
 
 ---
@@ -485,41 +583,90 @@ nmap -p 11112,11113 your-domain.com
 ### Issue: "Port 11112/11113 not accessible"
 
 **Solutions:**
-1. Check firewall: `sudo ufw status`
-2. Check Bluehost firewall rules
+1. Check firewall: `sudo firewall-cmd --list-all` (firewalld) or `sudo iptables -L` (iptables)
+2. Check Bluehost firewall rules in control panel
 3. Contact Bluehost support to open ports
 4. Use alternative ports
+5. Verify ports are listening: `sudo netstat -tuln | grep -E "11112|11113"`
 
 ### Issue: "Flask app not starting"
 
 **Check logs:**
 ```bash
 sudo journalctl -u clinic-backend -f
+# OR view log file directly
+tail -f /var/www/clinic-backend/logs/app.log
 ```
 
 **Common fixes:**
-- Check `.env` file exists
-- Verify database connection
-- Check Python path in service file
+- Check `.env` file exists and has correct permissions
+- Verify database connection: `psql $DATABASE_URL -c "SELECT 1;"`
+- Check Python path in service file (use `which python3` to find path)
+- Verify virtual environment is activated correctly
+- Check SELinux status: `sudo getenforce` (may need to set permissive mode)
+- Verify all dependencies installed: `pip list`
 
 ### Issue: "Database connection failed"
 
 **Test connection:**
 ```bash
 psql postgresql://clinic_user:password@localhost:5432/clinic_db
+# OR
+sudo -u postgres psql -c "\l"  # List databases
 ```
 
 **Check PostgreSQL:**
 ```bash
 sudo systemctl status postgresql
+# Check if running
+sudo systemctl start postgresql  # Start if stopped
+sudo systemctl enable postgresql  # Enable on boot
 ```
+
+**Common AlmaLinux PostgreSQL issues:**
+- PostgreSQL data directory: `/var/lib/pgsql/data/`
+- Config file: `/var/lib/pgsql/data/postgresql.conf`
+- Authentication: `/var/lib/pgsql/data/pg_hba.conf`
+- Check logs: `sudo tail -f /var/lib/pgsql/data/log/postgresql-*.log`
+
+### Issue: "Tables not created after flask db upgrade"
+
+**Verify migrations exist:**
+```bash
+ls -la migrations/versions/  # Should show migration files
+```
+
+**Check migration status:**
+```bash
+flask db current  # Shows current migration version
+flask db history  # Shows all migrations
+```
+
+**If tables missing:**
+```bash
+# Re-run upgrade
+flask db upgrade
+
+# Verify tables exist
+psql $DATABASE_URL -c "\dt"  # List all tables
+
+# Should show: patients, appointments, admins, dicom_images, dicom_measurements, reports, alembic_version
+```
+
+**Note:** `flask db upgrade` automatically creates all tables from migration files. If tables are missing, check:
+1. Migration files exist in `migrations/versions/`
+2. Database connection is correct
+3. User has CREATE TABLE permissions
 
 ### Issue: "DICOM servers not starting"
 
 **Check:**
-- Ports not in use: `sudo lsof -i :11112`
-- Firewall allows ports
-- Logs show errors
+- Ports not in use: `sudo lsof -i :11112` or `sudo netstat -tuln | grep 11112`
+- Firewall allows ports: `sudo firewall-cmd --list-ports`
+- SELinux may be blocking: `sudo setenforce 0` (temporary) or configure SELinux policies
+- Logs show errors: `tail -f dicom_listener.log` or `journalctl -u clinic-backend`
+- Check Python dependencies: `pip list | grep pynetdicom`
+- Verify network binding: Check if binding to `0.0.0.0` not `127.0.0.1`
 
 ---
 
