@@ -1,0 +1,290 @@
+"""
+PDF Generation Utilities using WeasyPrint
+"""
+import os
+from datetime import datetime
+from app.config import Config
+from app.models import DicomImage, Patient
+from app.extensions import db
+import logging
+
+logger = logging.getLogger(__name__)
+
+try:
+    from weasyprint import HTML, CSS
+    WEASYPRINT_AVAILABLE = True
+except ImportError:
+    WEASYPRINT_AVAILABLE = False
+    logger.warning("WeasyPrint not available. PDF generation will create placeholder files.")
+
+
+def generate_pdf_report(study_instance_uid, patient=None, images=None, output_path=None, report_number=None):
+    """
+    Generate PDF report for a DICOM study using WeasyPrint
+    
+    Args:
+        study_instance_uid: Study Instance UID
+        patient: Patient object (optional)
+        images: List of DicomImage objects (optional)
+        output_path: Output path for PDF (optional)
+        report_number: Report number (optional)
+    
+    Returns:
+        str: Path to generated PDF file
+    """
+    # Create reports directory if it doesn't exist
+    reports_dir = Config.PDF_REPORTS_PATH
+    os.makedirs(reports_dir, exist_ok=True, mode=0o755)
+    
+    # Generate output path
+    if not output_path:
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        safe_uid = study_instance_uid.replace('.', '_')[:50]
+        output_path = os.path.join(reports_dir, f"report_{safe_uid}_{timestamp}.pdf")
+    
+    # Ensure absolute path
+    output_path = os.path.abspath(output_path)
+    
+    # Fetch data if not provided
+    if not images:
+        images = DicomImage.query.filter_by(study_instance_uid=study_instance_uid).all()
+    
+    if not patient and images:
+        patient_id = images[0].patient_id if images else None
+        if patient_id:
+            patient = Patient.query.get(patient_id)
+    
+    # Get study info from first image
+    study_info = {}
+    if images:
+        first_image = images[0]
+        study_info = {
+            'study_date': first_image.study_date,
+            'study_time': first_image.study_time,
+            'study_description': first_image.study_description,
+            'accession_number': first_image.accession_number,
+            'referring_physician': first_image.referring_physician,
+            'institution_name': first_image.institution_name,
+            'modality': first_image.modality,
+        }
+    
+    # Generate HTML content
+    html_content = generate_report_html(
+        study_instance_uid=study_instance_uid,
+        patient=patient,
+        images=images,
+        study_info=study_info,
+        report_number=report_number
+    )
+    
+    # Generate PDF
+    if WEASYPRINT_AVAILABLE:
+        try:
+            # Generate PDF from HTML
+            HTML(string=html_content).write_pdf(
+                output_path,
+                stylesheets=[CSS(string=get_report_css())]
+            )
+            logger.info(f"PDF report generated: {output_path}")
+            return output_path
+        except Exception as e:
+            logger.error(f"Error generating PDF with WeasyPrint: {e}", exc_info=True)
+            # Fallback to placeholder
+            return generate_placeholder_report(output_path, study_instance_uid, patient, images)
+    else:
+        # Fallback to placeholder if WeasyPrint not available
+        logger.warning("WeasyPrint not available, creating placeholder report")
+        return generate_placeholder_report(output_path, study_instance_uid, patient, images)
+
+
+def generate_report_html(study_instance_uid, patient=None, images=None, study_info=None, report_number=None):
+    """Generate HTML content for PDF report"""
+    
+    patient_name = f"{patient.first_name} {patient.last_name}" if patient else "Unknown"
+    patient_id = patient.id if patient else "N/A"
+    patient_dob = patient.date_of_birth.strftime('%Y-%m-%d') if patient and patient.date_of_birth else "N/A"
+    patient_gender = patient.gender if patient else "N/A"
+    
+    study_date = study_info.get('study_date').strftime('%Y-%m-%d') if study_info.get('study_date') else "N/A"
+    study_desc = study_info.get('study_description', 'N/A')
+    modality = study_info.get('modality', 'N/A')
+    accession = study_info.get('accession_number', 'N/A')
+    referring_physician = study_info.get('referring_physician', 'N/A')
+    institution = study_info.get('institution_name', 'N/A')
+    
+    image_count = len(images) if images else 0
+    
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>DICOM Study Report</title>
+    </head>
+    <body>
+        <div class="header">
+            <h1>DICOM Study Report</h1>
+            <p class="report-number">Report Number: {report_number or 'N/A'}</p>
+            <p class="report-date">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        </div>
+        
+        <div class="section">
+            <h2>Patient Information</h2>
+            <table>
+                <tr><td><strong>Patient ID:</strong></td><td>{patient_id}</td></tr>
+                <tr><td><strong>Patient Name:</strong></td><td>{patient_name}</td></tr>
+                <tr><td><strong>Date of Birth:</strong></td><td>{patient_dob}</td></tr>
+                <tr><td><strong>Gender:</strong></td><td>{patient_gender}</td></tr>
+            </table>
+        </div>
+        
+        <div class="section">
+            <h2>Study Information</h2>
+            <table>
+                <tr><td><strong>Study Instance UID:</strong></td><td>{study_instance_uid}</td></tr>
+                <tr><td><strong>Study Date:</strong></td><td>{study_date}</td></tr>
+                <tr><td><strong>Study Description:</strong></td><td>{study_desc}</td></tr>
+                <tr><td><strong>Modality:</strong></td><td>{modality}</td></tr>
+                <tr><td><strong>Accession Number:</strong></td><td>{accession}</td></tr>
+                <tr><td><strong>Referring Physician:</strong></td><td>{referring_physician}</td></tr>
+                <tr><td><strong>Institution:</strong></td><td>{institution}</td></tr>
+            </table>
+        </div>
+        
+        <div class="section">
+            <h2>Images Summary</h2>
+            <p><strong>Total Images:</strong> {image_count}</p>
+    """
+    
+    # Add image thumbnails if available
+    if images:
+        html += "<div class='images-grid'>"
+        for img in images[:10]:  # Limit to 10 thumbnails
+            if img.thumbnail_path and os.path.exists(img.thumbnail_path):
+                html += f"<div class='image-item'><p>Image {img.instance_number or 'N/A'}</p></div>"
+        html += "</div>"
+    
+    html += """
+        </div>
+        
+        <div class="footer">
+            <p>This report was generated automatically from DICOM study data.</p>
+            <p>Report generated by Clinic Backend System</p>
+        </div>
+    </body>
+    </html>
+    """
+    
+    return html
+
+
+def get_report_css():
+    """Get CSS styles for PDF report"""
+    return """
+    @page {
+        size: A4;
+        margin: 2cm;
+    }
+    
+    body {
+        font-family: Arial, sans-serif;
+        font-size: 12pt;
+        line-height: 1.6;
+        color: #333;
+    }
+    
+    .header {
+        border-bottom: 3px solid #0066cc;
+        padding-bottom: 10px;
+        margin-bottom: 20px;
+    }
+    
+    .header h1 {
+        color: #0066cc;
+        margin: 0;
+        font-size: 24pt;
+    }
+    
+    .report-number, .report-date {
+        margin: 5px 0;
+        font-size: 10pt;
+        color: #666;
+    }
+    
+    .section {
+        margin: 20px 0;
+        page-break-inside: avoid;
+    }
+    
+    .section h2 {
+        color: #0066cc;
+        border-bottom: 2px solid #0066cc;
+        padding-bottom: 5px;
+        font-size: 16pt;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 10px 0;
+    }
+    
+    table td {
+        padding: 8px;
+        border-bottom: 1px solid #ddd;
+    }
+    
+    table td:first-child {
+        width: 200px;
+        font-weight: bold;
+        background-color: #f5f5f5;
+    }
+    
+    .images-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        margin: 10px 0;
+    }
+    
+    .image-item {
+        border: 1px solid #ddd;
+        padding: 10px;
+        text-align: center;
+    }
+    
+    .footer {
+        margin-top: 30px;
+        padding-top: 10px;
+        border-top: 1px solid #ddd;
+        font-size: 10pt;
+        color: #666;
+        text-align: center;
+    }
+    """
+
+
+def generate_placeholder_report(output_path, study_instance_uid, patient=None, images=None):
+    """Generate placeholder text file if WeasyPrint not available"""
+    with open(output_path, 'w') as f:
+        f.write("=" * 60 + "\n")
+        f.write("DICOM STUDY REPORT\n")
+        f.write("=" * 60 + "\n\n")
+        f.write(f"Report Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        f.write(f"Study Instance UID: {study_instance_uid}\n\n")
+        
+        if patient:
+            f.write("Patient Information:\n")
+            f.write(f"  ID: {patient.id}\n")
+            f.write(f"  Name: {patient.first_name} {patient.last_name}\n")
+            f.write(f"  DOB: {patient.date_of_birth}\n")
+            f.write(f"  Gender: {patient.gender}\n\n")
+        
+        if images:
+            f.write(f"Total Images: {len(images)}\n\n")
+            f.write("Note: Full PDF generation requires WeasyPrint.\n")
+            f.write("Install system dependencies:\n")
+            f.write("  sudo apt install libpango-1.0-0 libharfbuzz0b libpangocairo-1.0-0 libcairo2\n")
+    
+    logger.warning(f"Placeholder report created: {output_path}")
+    return output_path

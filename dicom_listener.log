@@ -1,0 +1,18 @@
+2026-01-12 11:31:58,006 - __main__ - INFO - Starting DICOM Listener...
+2026-01-12 11:31:58,029 - __main__ - INFO - Initializing DICOM servers...
+2026-01-12 11:31:58,039 - app.services.dicom_service - INFO - MWL server thread started
+2026-01-12 11:31:58,040 - app.services.dicom_service - INFO - Starting MWL server on port 11112
+2026-01-12 11:31:58,041 - app.services.dicom_service - INFO - Starting Storage server on port 11113
+2026-01-12 11:31:58,042 - app.services.dicom_service - INFO - Storage server thread started
+2026-01-12 11:31:58,042 - __main__ - INFO - ============================================================
+2026-01-12 11:31:58,042 - __main__ - INFO - DICOM Servers Status:
+2026-01-12 11:31:58,042 - __main__ - INFO -   MWL Server: Running
+2026-01-12 11:31:58,042 - __main__ - INFO -   MWL Port: 11112
+2026-01-12 11:31:58,042 - __main__ - INFO -   Storage Server: Running
+2026-01-12 11:31:58,042 - __main__ - INFO -   Storage Port: 11113
+2026-01-12 11:31:58,043 - __main__ - INFO -   AE Title: STORESCP
+2026-01-12 11:31:58,043 - __main__ - INFO - ============================================================
+2026-01-12 11:31:58,043 - __main__ - INFO - DICOM servers are running. Press Ctrl+C to stop.
+2026-01-12 11:32:13,526 - __main__ - INFO - 
+Shutting down DICOM servers...
+2026-01-12 11:32:13,526 - __main__ - INFO - DICOM Listener stopped.

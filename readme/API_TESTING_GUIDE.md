@@ -7,8 +7,11 @@ Complete guide for testing all Clinic Backend APIs using Postman or curl.
 1. [Authentication API](#authentication-api)
 2. [Patient API](#patient-api)
 3. [Appointment API](#appointment-api)
-4. [Test Users](#test-users)
-5. [Common Error Responses](#common-error-responses)
+4. [DICOM API](#dicom-api)
+5. [Admin Management API](#admin-management-api)
+   - [Creating Roles (Doctor, Technician, Receptionist)](#creating-roles-doctor-technician-receptionist)
+6. [Test Users](#test-users)
+7. [Common Error Responses](#common-error-responses)
 
 ---
 
@@ -377,6 +380,7 @@ GET /api/patients/search?q=john
 
 ---
 
+
 ## Appointment API
 
 ### 1. List Appointments
@@ -707,16 +711,933 @@ DELETE /api/appointments/1
 
 ---
 
+## DICOM API
+
+### Prerequisites
+
+Before testing DICOM API, ensure:
+1. DICOM servers are running (see [Start DICOM Servers](#start-dicom-servers))
+2. You have created at least one patient and appointment
+3. You are logged in as doctor or technician for server management
+
+---
+
+### 1. Start DICOM Servers
+
+**Endpoint:** `POST /api/dicom/server/start`
+
+**Access:** doctor, technician
+
+**Request:**
+```
+POST /api/dicom/server/start
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "message": "DICOM servers started",
+  "data": {
+    "mwl_server_running": true,
+    "storage_server_running": true,
+    "mwl_port": 11112,
+    "storage_port": 11113,
+    "ae_title": "STORESCP"
+  }
+}
+```
+
+**Postman Setup:**
+- Method: POST
+- URL: `http://localhost:5000/api/dicom/server/start`
+- Headers: (uses cookies automatically)
+
+**Note:** Servers can also be started by running `python dicom_listener.py` in terminal.
+
+---
+
+### 2. Get DICOM Server Status
+
+**Endpoint:** `GET /api/dicom/server/status`
+
+**Access:** doctor, technician
+
+**Request:**
+```
+GET /api/dicom/server/status
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "mwl_server_running": true,
+    "storage_server_running": true,
+    "mwl_port": 11112,
+    "storage_port": 11113,
+    "ae_title": "STORESCP"
+  }
+}
+```
+
+**Postman Setup:**
+- Method: GET
+- URL: `http://localhost:5000/api/dicom/server/status`
+
+---
+
+### 3. Stop DICOM Servers
+
+**Endpoint:** `POST /api/dicom/server/stop`
+
+**Access:** doctor, technician
+
+**Request:**
+```
+POST /api/dicom/server/stop
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "message": "DICOM servers stopped"
+}
+```
+
+---
+
+### 4. Send MWL for Appointment
+
+**Endpoint:** `POST /api/dicom/appointments/<appointment_id>/send-mwl`
+
+**Access:** receptionist, doctor
+
+**Description:** Makes an appointment available in the DICOM Modality Worklist. When a DICOM device queries the worklist, this appointment will appear.
+
+**Request:**
+```
+POST /api/dicom/appointments/1/send-mwl
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "message": "Appointment 1 is now available in MWL",
+  "data": {
+    "appointment_id": 1,
+    "patient_id": "P001",
+    "patient_name": "John Doe",
+    "date": "2024-01-20",
+    "time": "10:30",
+    "department": "Cardiology",
+    "status": "Waiting"
+  }
+}
+```
+
+**Postman Setup:**
+- Method: POST
+- URL: `http://localhost:5000/api/dicom/appointments/1/send-mwl`
+- Replace `1` with actual appointment ID
+
+**Workflow:**
+1. Create appointment (if not exists)
+2. Send MWL for that appointment
+3. On DICOM device, query worklist (search with today's date)
+4. Appointment should appear in device worklist
+5. After scanning, device sends images back to storage server
+
+---
+
+### 5. List DICOM Studies
+
+**Endpoint:** `GET /api/dicom/studies`
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `limit` (optional): Items per page (default: 20)
+- `patient_id` (optional): Filter by patient ID
+- `study_date` (optional): Filter by study date (YYYY-MM-DD)
+- `accession_number` (optional): Filter by accession number
+
+**Example Request:**
+```
+GET /api/dicom/studies?patient_id=P001&page=1&limit=10
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "study_instance_uid": "1.2.840.113619.2.55.3.1234567890.1234567890123456",
+      "patient_id": "P001",
+      "patient_name": "John Doe",
+      "study_date": "2024-01-20",
+      "study_time": "103000",
+      "study_description": "Ultrasound",
+      "accession_number": "ACC000001",
+      "referring_physician": "Dr. Smith",
+      "institution_name": "Clinic",
+      "series_count": 2,
+      "created_at": "2024-01-20T10:30:00"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 1,
+    "pages": 1,
+    "has_next": false,
+    "has_prev": false
+  }
+}
+```
+
+**Postman Setup:**
+- Method: GET
+- URL: `http://localhost:5000/api/dicom/studies`
+- Params tab: Add `patient_id`, `study_date`, `page`, `limit`
+
+---
+
+### 6. Get DICOM Study Details
+
+**Endpoint:** `GET /api/dicom/studies/<study_id>`
+
+**Example Request:**
+```
+GET /api/dicom/studies/1
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "study_instance_uid": "1.2.840.113619.2.55.3.1234567890.1234567890123456",
+    "patient": {
+      "id": "P001",
+      "name": "John Doe",
+      "gender": "Male",
+      "birth_date": "1990-01-15"
+    },
+    "study_date": "2024-01-20",
+    "study_time": "103000",
+    "study_description": "Ultrasound",
+    "accession_number": "ACC000001",
+    "referring_physician": "Dr. Smith",
+    "institution_name": "Clinic",
+    "series": [
+      {
+        "id": 1,
+        "series_instance_uid": "1.2.840.113619.2.55.3.1234567890.1234567890123457",
+        "modality": "US",
+        "series_number": 1,
+        "series_description": "Abdomen",
+        "body_part_examined": "ABDOMEN",
+        "manufacturer": "SAMSUNG",
+        "image_count": 5
+      }
+    ],
+    "created_at": "2024-01-20T10:30:00"
+  }
+}
+```
+
+**Postman Setup:**
+- Method: GET
+- URL: `http://localhost:5000/api/dicom/studies/1`
+- Replace `1` with actual study ID
+
+---
+
+### 7. List DICOM Images
+
+**Endpoint:** `GET /api/dicom/images`
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `limit` (optional): Items per page (default: 20)
+- `patient_id` (optional): Filter by patient ID
+- `study_instance_uid` (optional): Filter by study UID
+- `series_instance_uid` (optional): Filter by series UID
+- `modality` (optional): Filter by modality (US, CT, MR, etc.)
+
+**Example Request:**
+```
+GET /api/dicom/images?patient_id=P001&modality=US&page=1&limit=20
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "sop_instance_uid": "1.2.840.113619.2.55.3.1234567890.1234567890123458",
+      "study_instance_uid": "1.2.840.113619.2.55.3.1234567890.1234567890123456",
+      "series_instance_uid": "1.2.840.113619.2.55.3.1234567890.1234567890123457",
+      "patient_id": "P001",
+      "patient_name": "John Doe",
+      "patient_birth_date": "1990-01-15",
+      "patient_sex": "M",
+      "accession_number": "ACC000001",
+      "study_date": "2024-01-20",
+      "study_time": "103000",
+      "study_description": "Ultrasound",
+      "modality": "US",
+      "body_part_examined": "ABDOMEN",
+      "manufacturer": "SAMSUNG",
+      "file_path": "dicom_files/20240120/1.2.840.113619.2.55.3.1234567890.1234567890123458.dcm",
+      "thumbnail_path": "thumbnails/1.2.840.113619.2.55.3.1234567890.1234567890123458.jpg",
+      "created_at": "2024-01-20T10:30:00"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 5,
+    "pages": 1,
+    "has_next": false,
+    "has_prev": false
+  }
+}
+```
+
+**Postman Setup:**
+- Method: GET
+- URL: `http://localhost:5000/api/dicom/images`
+- Params tab: Add filters as needed
+
+---
+
+### 8. Get DICOM Image Details
+
+**Endpoint:** `GET /api/dicom/images/<image_id>`
+
+**Example Request:**
+```
+GET /api/dicom/images/1
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "sop_instance_uid": "1.2.840.113619.2.55.3.1234567890.1234567890123458",
+    "study_instance_uid": "1.2.840.113619.2.55.3.1234567890.1234567890123456",
+    "series_instance_uid": "1.2.840.113619.2.55.3.1234567890.1234567890123457",
+    "patient_id": "P001",
+    "patient_name": "John Doe",
+    "modality": "US",
+    "file_path": "dicom_files/20240120/1.2.840.113619.2.55.3.1234567890.1234567890123458.dcm",
+    "thumbnail_path": "thumbnails/1.2.840.113619.2.55.3.1234567890.1234567890123458.jpg",
+    "measurements": [
+      {
+        "id": 1,
+        "dicom_image_id": 1,
+        "patient_id": "P001",
+        "study_instance_uid": "1.2.840.113619.2.55.3.1234567890.1234567890123456",
+        "measurement_type": "Study",
+        "measurement_value": "Received",
+        "measurement_data": "{\"status\": \"received\", \"modality\": \"US\"}",
+        "created_at": "2024-01-20T10:30:00"
+      }
+    ],
+    "created_at": "2024-01-20T10:30:00"
+  }
+}
+```
+
+---
+
+### 9. Download DICOM File
+
+**Endpoint:** `GET /api/dicom/images/<image_id>/file`
+
+**Description:** Downloads the actual DICOM (.dcm) file
+
+**Example Request:**
+```
+GET /api/dicom/images/1/file
+```
+
+**Success Response (200):**
+- Content-Type: `application/dicom`
+- File download with name: `{sop_instance_uid}.dcm`
+
+**Postman Setup:**
+- Method: GET
+- URL: `http://localhost:5000/api/dicom/images/1/file`
+- Click "Send and Download" to save file
+
+**Note:** In Postman, the file will be downloaded automatically. In browser, it will prompt for download.
+
+---
+
+### 10. Get Image Thumbnail
+
+**Endpoint:** `GET /api/dicom/images/<image_id>/thumbnail`
+
+**Description:** Returns thumbnail image (JPEG)
+
+**Example Request:**
+```
+GET /api/dicom/images/1/thumbnail
+```
+
+**Success Response (200):**
+- Content-Type: `image/jpeg`
+- JPEG image data
+
+**Postman Setup:**
+- Method: GET
+- URL: `http://localhost:5000/api/dicom/images/1/thumbnail`
+- In Postman, you can see the image in the response (if "Send and Download" is not used)
+
+**Note:** Thumbnails are automatically generated when DICOM images are received.
+
+---
+
+### 11. List Measurements
+
+**Endpoint:** `GET /api/dicom/measurements`
+
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `limit` (optional): Items per page (default: 20)
+- `patient_id` (optional): Filter by patient ID
+- `study_instance_uid` (optional): Filter by study UID
+- `measurement_type` (optional): Filter by measurement type
+
+**Example Request:**
+```
+GET /api/dicom/measurements?patient_id=P001
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "dicom_image_id": 1,
+      "patient_id": "P001",
+      "study_instance_uid": "1.2.840.113619.2.55.3.1234567890.1234567890123456",
+      "measurement_type": "Study",
+      "measurement_value": "Received",
+      "measurement_data": "{\"status\": \"received\", \"modality\": \"US\"}",
+      "created_at": "2024-01-20T10:30:00"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 1,
+    "pages": 1,
+    "has_next": false,
+    "has_prev": false
+  }
+}
+```
+
+---
+
+### 12. Get Patient Studies
+
+**Endpoint:** `GET /api/dicom/patients/<patient_id>/studies`
+
+**Description:** Get all DICOM studies for a specific patient
+
+**Example Request:**
+```
+GET /api/dicom/patients/P001/studies
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": 1,
+      "study_instance_uid": "1.2.840.113619.2.55.3.1234567890.1234567890123456",
+      "study_date": "2024-01-20",
+      "study_time": "103000",
+      "study_description": "Ultrasound",
+      "accession_number": "ACC000001",
+      "series_count": 2,
+      "created_at": "2024-01-20T10:30:00"
+    }
+  ],
+  "patient": {
+    "id": "P001",
+    "name": "John Doe"
+  }
+}
+```
+
+---
+
+## DICOM Testing Workflow
+
+### Complete DICOM Workflow Test
+
+**Step 1: Start Flask Server**
+```bash
+cd /home/raza/Projects/Clinic/backend
+uv run flask run
+```
+
+**Step 2: Start DICOM Servers**
+- POST `/api/dicom/server/start`
+- Or run: `python dicom_listener.py` in separate terminal
+
+**Step 3: Login**
+- POST `/api/auth/login` with doctor credentials
+
+**Step 4: Create Patient** (if not exists)
+- POST `/api/patients` with patient data
+
+**Step 5: Create Appointment**
+- POST `/api/appointments` with appointment data
+
+**Step 6: Send MWL**
+- POST `/api/dicom/appointments/<appointment_id>/send-mwl`
+- This makes appointment available in DICOM worklist
+
+**Step 7: Query Worklist on DICOM Device**
+- On ultrasound machine, search worklist with today's date
+- Appointment should appear
+- Select and scan patient
+
+**Step 8: Device Sends Images**
+- After scanning, device automatically sends images to storage server
+- Images are automatically stored and processed
+
+**Step 9: Verify Images Received**
+- GET `/api/dicom/images` - Should show received images
+- GET `/api/dicom/studies` - Should show study created
+- GET `/api/dicom/images/<id>/thumbnail` - View thumbnail
+
+**Step 10: Download DICOM File**
+- GET `/api/dicom/images/<id>/file` - Download original DICOM file
+
+---
+
+## Admin Management API
+
+### How to Create Roles (Doctor, Technician, Receptionist) via Postman
+
+**Important:** Roles are created by creating admin users with specific roles. Only **super admin** can create new admin users.
+
+**Quick Summary:**
+- Login as super admin (`admin` / `admin123`)
+- Use `POST /api/admin` endpoint
+- Specify `role` field: `doctor`, `technician`, or `receptionist`
+- New user is created with that role
+
+#### Step 1: Login as Super Admin
+
+**Endpoint:** `POST /api/auth/login`
+
+**Request:**
+```
+POST http://localhost:5000/api/auth/login
+Body: {
+  "username": "admin",
+  "password": "admin123"
+}
+```
+
+**Expected Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "username": "admin",
+    "role": "doctor",
+    "is_super_admin": true
+  }
+}
+```
+
+#### Step 2: Create Doctor Role
+
+**Endpoint:** `POST /api/admin`
+
+**Access:** Super admin only
+
+**Postman Setup:**
+1. **Method:** `POST`
+2. **URL:** `http://localhost:5000/api/admin`
+3. **Headers:**
+   - `Content-Type: application/json`
+   - Cookies are sent automatically (from login)
+4. **Body:** Select `raw` → `JSON`
+
+**Request Body:**
+```json
+{
+  "username": "doctor2",
+  "email": "doctor2@clinic.com",
+  "password": "doctor123",
+  "first_name": "Jane",
+  "last_name": "Smith",
+  "role": "doctor",
+  "phone": "9876543210"
+}
+```
+
+**Success Response (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 5,
+    "username": "doctor2",
+    "email": "doctor2@clinic.com",
+    "first_name": "Jane",
+    "last_name": "Smith",
+    "phone": "9876543210",
+    "role": "doctor",
+    "is_active": true,
+    "is_super_admin": false,
+    "created_at": "2024-01-08T10:00:00"
+  },
+  "message": "Admin user \"doctor2\" created successfully"
+}
+```
+
+**✅ Doctor role created!** User can now login with `doctor2` / `doctor123` and has doctor permissions.
+
+#### Step 3: Create Technician Role
+
+**Postman Setup:**
+- **Method:** `POST`
+- **URL:** `http://localhost:5000/api/admin`
+- **Body → raw → JSON:**
+
+**Request Body:**
+```json
+{
+  "username": "technician2",
+  "email": "technician2@clinic.com",
+  "password": "tech123",
+  "first_name": "Bob",
+  "last_name": "Johnson",
+  "role": "technician",
+  "phone": "9876543211"
+}
+```
+
+**Success Response (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 6,
+    "username": "technician2",
+    "email": "technician2@clinic.com",
+    "first_name": "Bob",
+    "last_name": "Johnson",
+    "role": "technician",
+    "is_active": true,
+    "created_at": "2024-01-08T10:00:00"
+  },
+  "message": "Admin user \"technician2\" created successfully"
+}
+```
+
+**✅ Technician role created!** User can now login with `technician2` / `tech123` and has technician permissions.
+
+#### Step 4: Create Receptionist Role
+
+**Postman Setup:**
+- **Method:** `POST`
+- **URL:** `http://localhost:5000/api/admin`
+- **Body → raw → JSON:**
+
+**Request Body:**
+```json
+{
+  "username": "receptionist2",
+  "email": "receptionist2@clinic.com",
+  "password": "recep123",
+  "first_name": "Alice",
+  "last_name": "Williams",
+  "role": "receptionist",
+  "phone": "9876543212"
+}
+```
+
+**Success Response (201):**
+```json
+{
+  "success": true,
+  "data": {
+    "id": 7,
+    "username": "receptionist2",
+    "email": "receptionist2@clinic.com",
+    "first_name": "Alice",
+    "last_name": "Williams",
+    "role": "receptionist",
+    "is_active": true,
+    "created_at": "2024-01-08T10:00:00"
+  },
+  "message": "Admin user \"receptionist2\" created successfully"
+}
+```
+
+**✅ Receptionist role created!** User can now login with `receptionist2` / `recep123` and has receptionist permissions.
+
+### Postman Collection Setup for Role Creation
+
+**Create a folder:** `Admin Management` in your Postman collection
+
+**Add requests:**
+
+1. **Login as Super Admin**
+   - Method: `POST`
+   - URL: `{{base_url}}/api/auth/login`
+   - Body: `{"username": "admin", "password": "admin123"}`
+
+2. **Create Doctor**
+   - Method: `POST`
+   - URL: `{{base_url}}/api/admin`
+   - Body: (see Step 2 above)
+
+3. **Create Technician**
+   - Method: `POST`
+   - URL: `{{base_url}}/api/admin`
+   - Body: (see Step 3 above)
+
+4. **Create Receptionist**
+   - Method: `POST`
+   - URL: `{{base_url}}/api/admin`
+   - Body: (see Step 4 above)
+
+5. **List All Admins**
+   - Method: `GET`
+   - URL: `{{base_url}}/api/admin?role=doctor`
+
+### Valid Roles
+
+When creating admin users, use one of these roles in the `role` field:
+- `doctor` - Full access to patients, appointments, can update status
+- `technician` - Can update appointments and status, view patients
+- `receptionist` - Can manage patients, create/update appointments, bulk schedule
+
+### Required Fields
+
+- `username` - Unique username (string)
+- `email` - Unique email address (string)
+- `password` - Password, minimum 6 characters (will be hashed)
+- `first_name` - First name (string)
+- `last_name` - Last name (string)
+- `role` - One of: `doctor`, `technician`, `receptionist` (string)
+
+### Optional Fields
+
+- `phone` - Phone number (string)
+
+### Complete Example: Create All Three Roles
+
+**In Postman, create 3 requests:**
+
+**Request 1: Create Doctor**
+```json
+POST {{base_url}}/api/admin
+{
+  "username": "doctor_new",
+  "email": "doctor_new@clinic.com",
+  "password": "doctor123",
+  "first_name": "Dr. New",
+  "last_name": "Doctor",
+  "role": "doctor"
+}
+```
+
+**Request 2: Create Technician**
+```json
+POST {{base_url}}/api/admin
+{
+  "username": "tech_new",
+  "email": "tech_new@clinic.com",
+  "password": "tech123",
+  "first_name": "Tech",
+  "last_name": "New",
+  "role": "technician"
+}
+```
+
+**Request 3: Create Receptionist**
+```json
+POST {{base_url}}/api/admin
+{
+  "username": "recep_new",
+  "email": "recep_new@clinic.com",
+  "password": "recep123",
+  "first_name": "Recep",
+  "last_name": "New",
+  "role": "receptionist"
+}
+```
+
+**After creating, verify:**
+```
+GET {{base_url}}/api/admin
+```
+
+You should see all created users with their roles.
+
+#### Error Responses
+
+**Permission Denied (403):**
+```json
+{
+  "success": false,
+  "error": "Permission denied. Only super admin can create new admins."
+}
+```
+
+**Duplicate Username (400):**
+```json
+{
+  "success": false,
+  "error": "Username already exists"
+}
+```
+
+**Invalid Role (400):**
+```json
+{
+  "success": false,
+  "error": "Invalid role. Valid roles: doctor, technician, receptionist"
+}
+```
+
+---
+
 ## Test Users
 
 ### Default Admin Users
 
 | Username | Password | Role | Access |
 |----------|----------|------|--------|
-| `admin` | `admin123` | doctor | Full access |
+| `admin` | `admin123` | doctor | Full access (super admin) |
 | `doctor1` | `doctor123` | doctor | Can manage patients, appointments, reports |
 | `technician1` | `tech123` | technician | Can view patients, update appointments, update status |
 | `receptionist1` | `recep123` | receptionist | Can manage patients, create/update appointments, bulk schedule |
+
+### Creating Additional Users
+
+Use the Admin Management API above to create more users with any role.
+
+### Verify Created Roles
+
+**List all admins by role:**
+```
+GET {{base_url}}/api/admin?role=doctor
+GET {{base_url}}/api/admin?role=technician
+GET {{base_url}}/api/admin?role=receptionist
+```
+
+**Get specific admin:**
+```
+GET {{base_url}}/api/admin/5
+```
+
+**Test login with new role:**
+```
+POST {{base_url}}/api/auth/login
+Body: {
+  "username": "doctor2",
+  "password": "doctor123"
+}
+```
+
+---
+
+## Other Admin Management Endpoints
+
+### List All Admins
+
+**Endpoint:** `GET /api/admin`
+
+**Query Parameters:**
+- `role` (optional): Filter by role (doctor, technician, receptionist)
+- `is_active` (optional): Filter by active status (true/false)
+- `page` (optional): Page number
+- `limit` (optional): Items per page
+
+**Example:**
+```
+GET http://localhost:5000/api/admin?role=doctor&page=1&limit=10
+```
+
+### Update Admin
+
+**Endpoint:** `PUT /api/admin/<admin_id>`
+
+**Access:** Super admin (can update all fields) or own profile (limited fields)
+
+**Example:**
+```
+PUT http://localhost:5000/api/admin/5
+Body: {
+  "email": "newemail@clinic.com",
+  "phone": "1111111111"
+}
+```
+
+### Change Password
+
+**Endpoint:** `PUT /api/admin/<admin_id>/password`
+
+**Example:**
+```
+PUT http://localhost:5000/api/admin/5/password
+Body: {
+  "old_password": "doctor123",
+  "new_password": "newpassword123"
+}
+```
+
+### Deactivate Admin
+
+**Endpoint:** `DELETE /api/admin/<admin_id>`
+
+**Access:** Super admin only
+
+**Example:**
+```
+DELETE http://localhost:5000/api/admin/5
+```
+
+### Activate Admin
+
+**Endpoint:** `PUT /api/admin/<admin_id>/activate`
+
+**Access:** Super admin only
+
+**Example:**
+```
+PUT http://localhost:5000/api/admin/5/activate
+```
 
 ### Role Permissions Summary
 
@@ -799,6 +1720,11 @@ Create a collection named "Clinic API" with folders:
 - Authentication
 - Patients
 - Appointments
+- DICOM
+  - Server Management
+  - Studies
+  - Images
+  - Measurements
 
 ### 3. Use Environment Variables
 
@@ -940,6 +1866,18 @@ curl -X PUT http://localhost:5000/api/appointments/1/status \
 | `/api/appointments/<id>/status` | PUT | Yes | doctor, technician |
 | `/api/appointments/<id>` | DELETE | Yes | receptionist, doctor |
 | `/api/appointments/schedule` | POST | Yes | receptionist |
+| `/api/dicom/server/status` | GET | Yes | doctor, technician |
+| `/api/dicom/server/start` | POST | Yes | doctor, technician |
+| `/api/dicom/server/stop` | POST | Yes | doctor, technician |
+| `/api/dicom/appointments/<id>/send-mwl` | POST | Yes | receptionist, doctor |
+| `/api/dicom/studies` | GET | Yes | - |
+| `/api/dicom/studies/<id>` | GET | Yes | - |
+| `/api/dicom/images` | GET | Yes | - |
+| `/api/dicom/images/<id>` | GET | Yes | - |
+| `/api/dicom/images/<id>/file` | GET | Yes | - |
+| `/api/dicom/images/<id>/thumbnail` | GET | Yes | - |
+| `/api/dicom/measurements` | GET | Yes | - |
+| `/api/dicom/patients/<id>/studies` | GET | Yes | - |
 
 ---
 
