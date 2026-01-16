@@ -1,0 +1,80 @@
+name: Deploy Staging (Testing)
+
+on:
+  push:
+    branches:
+      - develop
+      - staging
+  workflow_dispatch:
+
+jobs:
+  deploy-staging:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Deploy to Staging
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.BLUEHOST_HOST }}
+          username: ${{ secrets.BLUEHOST_USER }}
+          key: ${{ secrets.BLUEHOST_SSH_KEY }}
+          script: |
+            set -e
+            
+            cd /opt/Offline-Clinic
+            
+            BRANCH_NAME="${{ github.ref_name }}"
+            echo "Starting STAGING deployment for branch: $BRANCH_NAME"
+            
+            # Fetch all branches
+            git fetch origin
+            
+            # Checkout the branch that triggered this workflow
+            git checkout $BRANCH_NAME
+            git reset --hard origin/$BRANCH_NAME
+            
+            # Activate virtual environment
+            source venv/bin/activate
+            
+            # Install dependencies
+            echo "Installing dependencies..."
+            pip install -r requirements.txt --quiet
+            
+            # Load environment variables
+            if [ -f ".env" ]; then
+              set -a
+              while IFS= read -r line || [ -n "$line" ]; do
+                if [[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "${line// }" ]]; then
+                  continue
+                fi
+                export "$line"
+              done < .env
+              set +a
+            fi
+            
+            # Run database migrations
+            echo "Running database migrations..."
+            flask db upgrade
+            
+            # Set permissions
+            sudo chown -R apache:apache /opt/Offline-Clinic
+            sudo chmod -R 755 /opt/Offline-Clinic
+            
+            # Restart application
+            echo "Restarting application..."
+            sudo systemctl restart clinic-backend
+            
+            sleep 5
+            
+            # Health check
+            if curl -f http://localhost:5000/health; then
+              echo ""
+              echo "STAGING deployment successful for branch: $BRANCH_NAME"
+            else
+              echo "Health check failed"
+              sudo journalctl -u clinic-backend -n 30 --no-pager
+              exit 1
+            fi
