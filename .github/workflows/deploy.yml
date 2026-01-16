@@ -57,6 +57,9 @@ jobs:
             if command -v uv &> /dev/null; then
               echo "Using uv sync..."
               uv sync
+              # Ensure gunicorn is installed (uv might not install it properly)
+              echo " Ensuring gunicorn is installed..."
+              pip install --quiet gunicorn || echo "Gunicorn already installed"
             else
               echo "Using pip install..."
               pip install --upgrade pip
@@ -64,10 +67,38 @@ jobs:
             fi
             
             # Verify gunicorn is installed (required by systemd service)
-            if ! command -v gunicorn &> /dev/null; then
-              echo " Installing gunicorn..."
+            echo " Verifying gunicorn installation..."
+            if [ ! -f "venv/bin/gunicorn" ]; then
+              echo " WARNING: gunicorn not found, installing..."
               pip install gunicorn
             fi
+            
+            # Verify gunicorn exists and is executable
+            if [ ! -f "venv/bin/gunicorn" ]; then
+              echo " ERROR: gunicorn not found after installation!"
+              echo " Listing venv/bin contents:"
+              ls -la venv/bin/ | head -20
+              exit 1
+            fi
+            
+            # Fix permissions for venv/bin directory and gunicorn
+            echo " Setting permissions on venv/bin..."
+            chmod +x venv/bin
+            chmod +x venv/bin/gunicorn
+            echo " Gunicorn path: $(pwd)/venv/bin/gunicorn"
+            echo " Gunicorn exists: $([ -f venv/bin/gunicorn ] && echo 'YES' || echo 'NO')"
+            echo " Gunicorn permissions: $(ls -l venv/bin/gunicorn | awk '{print $1, $3, $4}')"
+            
+            # Set proper ownership (apache user needs access)
+            echo " Setting ownership for apache user..."
+            sudo chown -R apache:apache /var/www/Offline-Clinic
+            sudo chmod -R 755 /var/www/Offline-Clinic
+            sudo chmod +x /var/www/Offline-Clinic/venv/bin
+            sudo chmod +x /var/www/Offline-Clinic/venv/bin/gunicorn
+            
+            # Verify ownership after setting
+            echo " Verifying ownership..."
+            ls -l /var/www/Offline-Clinic/venv/bin/gunicorn
             
             # Load environment variables (skip comments and empty lines)
             echo " Loading environment variables..."
@@ -96,7 +127,15 @@ jobs:
             chmod 755 dicom_files thumbnails reports
             
             # Restart application
+            # Verify gunicorn before restarting
+            if [ ! -f "/var/www/Offline-Clinic/venv/bin/gunicorn" ]; then
+              echo " ERROR: gunicorn not found at expected path!"
+              ls -la /var/www/Offline-Clinic/venv/bin/ | grep gunicorn || echo "No gunicorn in venv/bin"
+              exit 1
+            fi
+            
             echo " Restarting application..."
+            sudo systemctl daemon-reload
             sudo systemctl restart Offline-Clinic
             
             # Wait for service to start
