@@ -9,11 +9,11 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
-
+      
       - name: Deploy to Bluehost VPS
         uses: appleboy/ssh-action@master
         with:
@@ -22,51 +22,92 @@ jobs:
           key: ${{ secrets.BLUEHOST_SSH_KEY }}
           script: |
             set -e
-
+            
             cd /var/www/Offline-Clinic
-
+            
+            echo " Starting deployment..."
+            
+            # Backup current version
             if [ -d ".git" ]; then
+              echo " Creating backup..."
               cp -r . ../Offline-Clinic-backup-$(date +%Y%m%d-%H%M%S) || true
             fi
-
+            
+            # Pull latest code
+            echo " Pulling latest code..."
             git fetch origin
             git reset --hard origin/main
-
+            
+            # Handle virtual environment
             if [ -d ".venv" ]; then
+              echo " Activating .venv..."
               source .venv/bin/activate
-              VENV_PATH=".venv"
             elif [ -d "venv" ]; then
+              echo " Activating venv..."
               source venv/bin/activate
-              VENV_PATH="venv"
             else
-              echo "Creating virtual environment..."
+              echo " Creating virtual environment..."
               python3.11 -m venv .venv
               source .venv/bin/activate
-              VENV_PATH=".venv"
             fi
-
+            
+            # Install dependencies
+            echo " Installing dependencies..."
             if command -v uv &> /dev/null; then
               echo "Using uv sync..."
               uv sync
             else
-              echo "uv not found, using pip..."
+              echo "Using pip install..."
               pip install --upgrade pip
               pip install -r requirements.txt
             fi
-
+            
             # Load environment variables (skip comments and empty lines)
-            set -a
-            source <(grep -v '^#' .env | grep -v '^$' | sed 's/^/export /')
-            set +a
-
+            echo " Loading environment variables..."
+            if [ -f ".env" ]; then
+              set -a
+              while IFS= read -r line || [ -n "$line" ]; do
+                # Skip comments and empty lines
+                if [[ "$line" =~ ^[[:space:]]*# ]] || [[ -z "${line// }" ]]; then
+                  continue
+                fi
+                # Export the variable
+                export "$line"
+              done < .env
+              set +a
+            else
+              echo "  Warning: .env file not found"
+            fi
+            
+            # Run database migrations
+            echo "🗄️  Running database migrations..."
             flask db upgrade
-
+            
+            # Create storage directories if they don't exist
+            echo " Creating storage directories..."
+            mkdir -p dicom_files thumbnails reports logs
+            chmod 755 dicom_files thumbnails reports
+            
+            # Restart application
+            echo " Restarting application..."
             sudo systemctl restart Offline-Clinic
-
+            
+            # Wait for service to start
+            echo " Waiting for service to start..."
             sleep 5
-
-            curl -f http://localhost:5000/health || exit 1
-
+            
+            # Health check
+            echo " Running health check..."
+            if curl -f http://localhost:5000/health; then
+              echo " Health check passed"
+            else
+              echo " Health check failed"
+              sudo journalctl -u Offline-Clinic -n 50 --no-pager
+              exit 1
+            fi
+            
+            # Check service status
+            echo "Service status:"
             sudo systemctl status Offline-Clinic --no-pager || true
-
+            
             echo "✅ Deployment successful!"
