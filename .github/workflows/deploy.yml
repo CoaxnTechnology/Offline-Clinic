@@ -54,7 +54,11 @@ jobs:
               pip install -r requirements.txt
             fi
 
-            export $(cat .env | xargs)
+            # Load environment variables (skip comments and empty lines)
+            set -a
+            source <(grep -v '^#' .env | grep -v '^$' | sed 's/^/export /')
+            set +a
+
             flask db upgrade
 
             sudo systemctl restart Offline-Clinic
