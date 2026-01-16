@@ -35,7 +35,7 @@ jobs:
             git reset --hard origin/main
             
             # Activate virtual environment
-            source venv/bin/activate
+            source .venv/bin/activate
             
             # Install/update dependencies
             pip install --upgrade pip
