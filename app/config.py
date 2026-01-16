@@ -5,24 +5,6 @@ load_dotenv()
 
 
 class Config:
-<<<<<<< HEAD
-    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
-
-    DATABASE_URL = os.getenv("DATABASE_URL")
-
-    if DATABASE_URL:
-        DATABASE_URL = DATABASE_URL.strip()  # 🔴 REMOVE NEWLINES/SPACES
-
-        if DATABASE_URL.startswith("postgres://"):
-            DATABASE_URL = DATABASE_URL.replace(
-                "postgres://",
-                "postgresql+psycopg2://",
-                1
-            )
-
-    SQLALCHEMY_DATABASE_URI = DATABASE_URL
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
-=======
     """Base configuration"""
     SECRET_KEY = os.getenv('SECRET_KEY') or 'dev-secret-key-change-in-production'
     
@@ -129,4 +111,4 @@ def get_config():
     """Get configuration based on FLASK_ENV"""
     env = os.getenv('FLASK_ENV', 'development')
     return config.get(env, config['default'])
->>>>>>> dev
+
