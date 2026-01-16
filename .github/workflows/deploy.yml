@@ -38,17 +38,18 @@ jobs:
             git fetch origin
             git reset --hard origin/main
             
-            # Handle virtual environment
-            if [ -d ".venv" ]; then
-              echo " Activating .venv..."
-              source .venv/bin/activate
-            elif [ -d "venv" ]; then
+            # Handle virtual environment (must use 'venv' to match systemd service)
+            if [ -d "venv" ]; then
               echo " Activating venv..."
+              source venv/bin/activate
+            elif [ -d ".venv" ]; then
+              echo " Renaming .venv to venv to match systemd service..."
+              mv .venv venv
               source venv/bin/activate
             else
               echo " Creating virtual environment..."
-              python3.11 -m venv .venv
-              source .venv/bin/activate
+              python3.11 -m venv venv
+              source venv/bin/activate
             fi
             
             # Install dependencies
@@ -60,6 +61,12 @@ jobs:
               echo "Using pip install..."
               pip install --upgrade pip
               pip install -r requirements.txt
+            fi
+            
+            # Verify gunicorn is installed (required by systemd service)
+            if ! command -v gunicorn &> /dev/null; then
+              echo " Installing gunicorn..."
+              pip install gunicorn
             fi
             
             # Load environment variables (skip comments and empty lines)
