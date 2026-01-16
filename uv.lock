@@ -310,6 +310,7 @@ requires-dist = [
     { name = "flask-sqlalchemy", specifier = ">=3.1.1" },
     { name = "flask-wtf", specifier = ">=1.2.1" },
     { name = "fuzzywuzzy", specifier = ">=0.18.0" },
+    { name = "gunicorn" },
     { name = "gunicorn", specifier = ">=22.0.0" },
     { name = "numpy", specifier = ">=2.4.1" },
     { name = "pillow", specifier = ">=10.3.0" },
