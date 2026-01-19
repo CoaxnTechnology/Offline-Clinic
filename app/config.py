@@ -60,7 +60,7 @@ class ProductionConfig(Config):
     TESTING = False
     
     # Security
-    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = False  # Set to True when using HTTPS
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
     
@@ -111,4 +111,3 @@ def get_config():
     """Get configuration based on FLASK_ENV"""
     env = os.getenv('FLASK_ENV', 'development')
     return config.get(env, config['default'])
-
