@@ -1,0 +1,57 @@
+name: Deploy to Dev/Testing
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Deploy Dev Branch
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.BLUEHOST_HOST }}
+          username: ${{ secrets.BLUEHOST_USER }}
+          key: ${{ secrets.BLUEHOST_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/Offline-Clinic
+            
+            echo "Deploying DEV branch..."
+            
+            git fetch origin
+            git checkout dev
+            git reset --hard origin/dev
+            
+            source venv/bin/activate
+            pip install -r requirements.txt --quiet
+            
+            # Load env and run migrations
+            set -a
+            source .env
+            set +a
+            flask db upgrade
+            
+            # Set permissions
+            sudo chown -R apache:apache /opt/Offline-Clinic
+            
+            # Restart service
+            sudo systemctl restart clinic-backend
+            
+            sleep 3
+            
+            # Health check
+            if curl -f http://localhost:5000/health; then
+              echo ""
+              echo "DEV deployment successful!"
+            else
+              echo "Health check failed!"
+              exit 1
+            fi
