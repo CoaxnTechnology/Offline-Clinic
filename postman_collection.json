@@ -1,0 +1,598 @@
+{
+  "info": {
+    "name": "Offline Clinic API",
+    "description": "Complete API collection for Offline Clinic Application",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://129.121.75.225",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": "{{base_url}}/api/auth/login"
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/auth/logout"
+          }
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/auth/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Patients",
+      "item": [
+        {
+          "name": "List Patients",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/patients?page=1&limit=20&search=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "patients"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "20"},
+                {"key": "search", "value": ""}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Patient",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/patients/P001"
+          }
+        },
+        {
+          "name": "Create Patient",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"P001\",\n  \"first_name\": \"John\",\n  \"last_name\": \"Doe\",\n  \"phone\": \"1234567890\",\n  \"email\": \"john@example.com\",\n  \"gender\": \"M\",\n  \"birth_date\": \"1990-01-15\"\n}"
+            },
+            "url": "{{base_url}}/api/patients"
+          }
+        },
+        {
+          "name": "Update Patient",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"9876543210\",\n  \"email\": \"john.updated@example.com\"\n}"
+            },
+            "url": "{{base_url}}/api/patients/P001"
+          }
+        },
+        {
+          "name": "Delete Patient",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/patients/P001"
+          }
+        },
+        {
+          "name": "Search Patients",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/patients/search?q=john",
+              "host": ["{{base_url}}"],
+              "path": ["api", "patients", "search"],
+              "query": [
+                {"key": "q", "value": "john"}
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Appointments",
+      "item": [
+        {
+          "name": "List Appointments",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/appointments?page=1&limit=20&date=&status=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "appointments"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "20"},
+                {"key": "date", "value": ""},
+                {"key": "status", "value": ""}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Appointment",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/appointments/1"
+          }
+        },
+        {
+          "name": "Create Appointment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"patient_id\": \"P001\",\n  \"doctor\": \"Dr. Smith\",\n  \"department\": \"Radiology\",\n  \"date\": \"2026-01-28\",\n  \"time\": \"10:30\",\n  \"status\": \"Waiting\"\n}"
+            },
+            "url": "{{base_url}}/api/appointments"
+          }
+        },
+        {
+          "name": "Update Appointment",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"doctor\": \"Dr. Johnson\",\n  \"time\": \"11:00\"\n}"
+            },
+            "url": "{{base_url}}/api/appointments/1"
+          }
+        },
+        {
+          "name": "Update Appointment Status",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"In-Scan\"\n}"
+            },
+            "url": "{{base_url}}/api/appointments/1/status"
+          }
+        },
+        {
+          "name": "Delete Appointment",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/appointments/1"
+          }
+        },
+        {
+          "name": "Bulk Schedule Appointments",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "[\n  {\n    \"patient_id\": \"P001\",\n    \"doctor\": \"Dr. Smith\",\n    \"date\": \"2026-01-28\",\n    \"time\": \"09:00\"\n  },\n  {\n    \"patient_id\": \"P002\",\n    \"doctor\": \"Dr. Smith\",\n    \"date\": \"2026-01-28\",\n    \"time\": \"09:30\"\n  }\n]"
+            },
+            "url": "{{base_url}}/api/appointments/schedule"
+          }
+        }
+      ]
+    },
+    {
+      "name": "DICOM",
+      "item": [
+        {
+          "name": "List Studies",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/dicom/studies?page=1&limit=20&patient_id=&study_date=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dicom", "studies"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "20"},
+                {"key": "patient_id", "value": ""},
+                {"key": "study_date", "value": ""}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Study",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/dicom/studies/1.2.3.4.5"
+          }
+        },
+        {
+          "name": "List Images",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/dicom/images?page=1&limit=20&study_instance_uid=&modality=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dicom", "images"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "20"},
+                {"key": "study_instance_uid", "value": ""},
+                {"key": "modality", "value": ""}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Image",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/dicom/images/1"
+          }
+        },
+        {
+          "name": "Download DICOM File",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/dicom/images/1/file"
+          }
+        },
+        {
+          "name": "Get Thumbnail",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/dicom/images/1/thumbnail"
+          }
+        },
+        {
+          "name": "Get Patient Studies",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/dicom/patients/P001/studies"
+          }
+        },
+        {
+          "name": "List Measurements",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/dicom/measurements?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dicom", "measurements"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "20"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Send MWL for Appointment",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/dicom/appointments/1/send-mwl"
+          }
+        },
+        {
+          "name": "Get Server Status",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/dicom/server/status"
+          }
+        },
+        {
+          "name": "Start DICOM Servers",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/dicom/server/start"
+          }
+        },
+        {
+          "name": "Stop DICOM Servers",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/dicom/server/stop"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "List Reports",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/reports?page=1&limit=20&status=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reports"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "20"},
+                {"key": "status", "value": ""}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Generate Report",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"study_instance_uid\": \"1.2.3.4.5\",\n  \"patient_id\": \"P001\",\n  \"notes\": \"Normal findings\",\n  \"async\": false\n}"
+            },
+            "url": "{{base_url}}/api/reports/generate"
+          }
+        },
+        {
+          "name": "Get Report",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/reports/1"
+          }
+        },
+        {
+          "name": "Get Report by Number",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/reports/number/RPT-2026-0001"
+          }
+        },
+        {
+          "name": "Download Report PDF",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/reports/1/download"
+          }
+        },
+        {
+          "name": "Get Report Status",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/reports/1/status"
+          }
+        },
+        {
+          "name": "Delete Report",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/reports/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Doctors (User Management)",
+      "item": [
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/doctors?page=1&limit=20&role=&is_active=",
+              "host": ["{{base_url}}"],
+              "path": ["api", "doctors"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "20"},
+                {"key": "role", "value": ""},
+                {"key": "is_active", "value": ""}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get User",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/doctors/1"
+          }
+        },
+        {
+          "name": "Create User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"receptionist1\",\n  \"email\": \"receptionist@clinic.com\",\n  \"password\": \"pass123\",\n  \"first_name\": \"Jane\",\n  \"last_name\": \"Doe\",\n  \"phone\": \"1234567890\",\n  \"role\": \"receptionist\"\n}"
+            },
+            "url": "{{base_url}}/api/doctors"
+          }
+        },
+        {
+          "name": "Update User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"updated@clinic.com\",\n  \"phone\": \"9876543210\"\n}"
+            },
+            "url": "{{base_url}}/api/doctors/1"
+          }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"old_password\": \"currentpass\",\n  \"new_password\": \"newpass123\"\n}"
+            },
+            "url": "{{base_url}}/api/doctors/1/password"
+          }
+        },
+        {
+          "name": "Deactivate User",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/doctors/1"
+          }
+        },
+        {
+          "name": "Activate User",
+          "request": {
+            "method": "PUT",
+            "url": "{{base_url}}/api/doctors/1/activate"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Super Admin",
+      "item": [
+        {
+          "name": "Dashboard Stats",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/super-admin/dashboard"
+          }
+        },
+        {
+          "name": "List Clinics",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/super-admin/clinics"
+          }
+        },
+        {
+          "name": "Get Clinic",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/super-admin/clinics/1"
+          }
+        },
+        {
+          "name": "Create Clinic",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"City Hospital\",\n  \"address\": \"123 Main Street\",\n  \"phone\": \"1234567890\",\n  \"email\": \"info@cityhospital.com\"\n}"
+            },
+            "url": "{{base_url}}/api/super-admin/clinics"
+          }
+        },
+        {
+          "name": "Update Clinic",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"City Hospital Updated\",\n  \"phone\": \"9876543210\",\n  \"is_active\": true\n}"
+            },
+            "url": "{{base_url}}/api/super-admin/clinics/1"
+          }
+        },
+        {
+          "name": "Deactivate Clinic",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/super-admin/clinics/1"
+          }
+        },
+        {
+          "name": "Activate Clinic",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/super-admin/clinics/1/activate"
+          }
+        },
+        {
+          "name": "Create Clinic User (Doctor)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"dr_smith\",\n  \"email\": \"dr.smith@cityhospital.com\",\n  \"password\": \"doctor123\",\n  \"first_name\": \"John\",\n  \"last_name\": \"Smith\",\n  \"phone\": \"1234567890\",\n  \"role\": \"doctor\"\n}"
+            },
+            "url": "{{base_url}}/api/super-admin/clinics/1/users"
+          }
+        },
+        {
+          "name": "Create Clinic User (Receptionist)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"reception1\",\n  \"email\": \"reception@cityhospital.com\",\n  \"password\": \"recep123\",\n  \"first_name\": \"Mary\",\n  \"last_name\": \"Johnson\",\n  \"phone\": \"1234567890\",\n  \"role\": \"receptionist\"\n}"
+            },
+            "url": "{{base_url}}/api/super-admin/clinics/1/users"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/health"
+          }
+        }
+      ]
+    }
+  ]
+}
