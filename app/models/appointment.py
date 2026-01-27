@@ -6,6 +6,7 @@ class Appointment(db.Model, TimestampMixin):
     __tablename__ = 'appointments'
 
     id = db.Column(db.Integer, primary_key=True)
+    clinic_id = db.Column(db.Integer, db.ForeignKey('clinics.id'), nullable=True, index=True)
     patient_id = db.Column(db.String(20), db.ForeignKey('patients.id'), nullable=False)
 
     doctor = db.Column(db.String(100), nullable=False)  # e.g., Dr. Sharma

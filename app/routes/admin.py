@@ -5,7 +5,7 @@ from app.extensions import db
 from app.utils.decorators import require_role
 from datetime import datetime
 
-admin_bp = Blueprint('admin', __name__, url_prefix='/api/admin')
+admin_bp = Blueprint('admin', __name__, url_prefix='/api/doctors')
 
 
 def require_super_admin_or_self(admin_id=None):
@@ -140,14 +140,18 @@ def get_admin(admin_id):
 def create_admin():
     """
     Create new admin user
-    Access: Super admin only (is_super_admin=True)
+    Access: Super admin can create any role
+            Doctor can create receptionist only
     Roles: doctor, technician, receptionist
     """
-    # Step 1: Check if user is super admin
-    if not current_user.is_super_admin:
+    # Step 1: Check permissions
+    is_super = current_user.is_super_admin
+    is_doctor = current_user.role == 'doctor'
+    
+    if not is_super and not is_doctor:
         return jsonify({
             'success': False,
-            'error': 'Permission denied. Only super admin can create new admins.'
+            'error': 'Permission denied. Only super admin or doctor can create users.'
         }), 403
     
     # Step 2: Get data from request
@@ -175,6 +179,14 @@ def create_admin():
             'success': False,
             'error': f'Invalid role. Valid roles: {", ".join(valid_roles)}'
         }), 400
+    
+    # Step 4b: Doctor can only create receptionist
+    if not current_user.is_super_admin and current_user.role == 'doctor':
+        if data['role'] != 'receptionist':
+            return jsonify({
+                'success': False,
+                'error': 'Doctors can only create receptionist users.'
+            }), 403
     
     # Step 5: Check if username already exists
     existing_username = Admin.query.filter_by(username=data['username']).first()

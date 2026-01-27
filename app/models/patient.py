@@ -6,7 +6,7 @@ class Patient(db.Model, TimestampMixin):
     __tablename__ = 'patients'
 
     id = db.Column(db.String(20), primary_key=True)  # e.g., P001
-    #clinic_id = db.Column(db.String(50), unique=True, nullable=True)  # Internal clinic ID
+    clinic_id = db.Column(db.Integer, db.ForeignKey('clinics.id'), nullable=True, index=True)
 
     # Personal
     title = db.Column(db.String(10))  # Mr, Ms, Mrs

@@ -103,7 +103,7 @@ def list_reports_endpoint():
 
 @reporting_bp.route('/generate', methods=['POST'])
 @login_required
-@require_role('doctor', 'technician')
+@require_role('doctor', 'receptionist')
 def generate_report():
     """
     Generate PDF report for a DICOM study

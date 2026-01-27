@@ -14,6 +14,7 @@ class Report(db.Model, TimestampMixin):
     __tablename__ = 'reports'
 
     id = db.Column(db.Integer, primary_key=True)
+    clinic_id = db.Column(db.Integer, db.ForeignKey('clinics.id'), nullable=True, index=True)
     
     # Report identification
     report_number = db.Column(db.String(50), unique=True, nullable=False, index=True)

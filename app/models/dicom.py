@@ -9,6 +9,7 @@ class DicomImage(db.Model, TimestampMixin):
     __tablename__ = 'dicom_images'
 
     id = db.Column(db.Integer, primary_key=True)
+    clinic_id = db.Column(db.Integer, db.ForeignKey('clinics.id'), nullable=True, index=True)
     
     # DICOM Identifiers (Study, Series, Image)
     sop_instance_uid = db.Column(db.String(255), unique=True, nullable=False, index=True)
