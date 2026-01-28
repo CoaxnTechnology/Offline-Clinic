@@ -1,0 +1,48 @@
+Module,Feature,Status,Priority,Notes
+Authentication,Login/Logout,Done,High,Session-based with Flask-Login
+Authentication,Get Current User,Done,High,
+Patients,List Patients,Done,High,Pagination + Search
+Patients,Create Patient,Done,High,
+Patients,Update Patient,Done,High,
+Patients,Delete Patient,Done,Medium,
+Patients,Search Patients,Done,High,
+Appointments,List Appointments,Done,High,Filter by date/status
+Appointments,Create Appointment,Done,High,
+Appointments,Update Appointment,Done,High,
+Appointments,Update Status,Done,High,Waiting/In-Scan/Completed etc
+Appointments,Delete Appointment,Done,Medium,
+Appointments,Bulk Schedule,Done,Medium,Up to 50 at once
+DICOM,MWL Server,Done,High,Port 11112
+DICOM,Storage Server (C-STORE),Done,High,Port 11113
+DICOM,List Studies,Done,High,
+DICOM,Get Study Details,Done,High,
+DICOM,List Images,Done,High,
+DICOM,Get Image Details,Done,High,
+DICOM,Download DICOM File,Done,Medium,
+DICOM,Get Thumbnail,Done,Medium,
+DICOM,Send MWL,Done,High,
+DICOM,Server Start/Stop,Done,High,
+DICOM,List Measurements,Done,Medium,
+Reports,List Reports,Done,High,
+Reports,Generate PDF Report,Done,High,WeasyPrint
+Reports,Download PDF,Done,High,
+Reports,Check Status,Done,Medium,Async support with Celery
+Reports,Delete Report,Done,Medium,
+Users,List Users,Done,High,/api/doctors
+Users,Create User,Done,High,Doctor creates receptionist only
+Users,Update User,Done,High,
+Users,Change Password,Done,High,
+Users,Activate/Deactivate,Done,Medium,
+Multi-Clinic,Clinic Model,Done,High,
+Multi-Clinic,Super Admin Dashboard,Done,High,
+Multi-Clinic,Create Clinic,Done,High,
+Multi-Clinic,Update Clinic,Done,High,
+Multi-Clinic,Activate/Deactivate Clinic,Done,High,
+Multi-Clinic,Create Clinic Users,Done,High,1 doctor per clinic limit
+Multi-Clinic,License System,Done,High,Free - no expiry
+Multi-Clinic,Data Filtering by Clinic,Pending,High,Need to add clinic_id filter to routes
+Frontend,Web Application,Pending,High,Not started
+Testing,Unit Tests,Pending,Medium,
+Testing,API Integration Tests,Pending,Medium,
+Deployment,GitHub Actions (main),Done,High,Auto deploy on push
+Deployment,GitHub Actions (dev),Done,High,Auto deploy on push
