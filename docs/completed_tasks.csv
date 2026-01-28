@@ -1,0 +1,65 @@
+Module,Task,Status,Description
+Authentication,Login API,Done,POST /api/auth/login - Session-based authentication
+Authentication,Logout API,Done,POST /api/auth/logout
+Authentication,Get Current User,Done,GET /api/auth/me
+Patients,List Patients,Done,GET /api/patients - Pagination + Search
+Patients,Get Patient,Done,GET /api/patients/{id}
+Patients,Create Patient,Done,POST /api/patients
+Patients,Update Patient,Done,PUT /api/patients/{id}
+Patients,Delete Patient,Done,DELETE /api/patients/{id}
+Patients,Search Patients,Done,GET /api/patients/search
+Appointments,List Appointments,Done,GET /api/appointments - Filter by date/status
+Appointments,Get Appointment,Done,GET /api/appointments/{id}
+Appointments,Create Appointment,Done,POST /api/appointments
+Appointments,Update Appointment,Done,PUT /api/appointments/{id}
+Appointments,Update Status,Done,PUT /api/appointments/{id}/status
+Appointments,Delete Appointment,Done,DELETE /api/appointments/{id}
+Appointments,Bulk Schedule,Done,POST /api/appointments/schedule - Up to 50
+DICOM,MWL Server,Done,Port 11112 - Modality Worklist
+DICOM,Storage Server,Done,Port 11113 - C-STORE SCP
+DICOM,List Studies,Done,GET /api/dicom/studies
+DICOM,Get Study,Done,GET /api/dicom/studies/{uid}
+DICOM,List Images,Done,GET /api/dicom/images
+DICOM,Get Image,Done,GET /api/dicom/images/{id}
+DICOM,Download DICOM File,Done,GET /api/dicom/images/{id}/file
+DICOM,Get Thumbnail,Done,GET /api/dicom/images/{id}/thumbnail
+DICOM,Patient Studies,Done,GET /api/dicom/patients/{id}/studies
+DICOM,List Measurements,Done,GET /api/dicom/measurements
+DICOM,Send MWL,Done,POST /api/dicom/appointments/{id}/send-mwl
+DICOM,Server Status,Done,GET /api/dicom/server/status
+DICOM,Start Server,Done,POST /api/dicom/server/start
+DICOM,Stop Server,Done,POST /api/dicom/server/stop
+Reports,List Reports,Done,GET /api/reports
+Reports,Generate PDF,Done,POST /api/reports/generate - WeasyPrint
+Reports,Get Report,Done,GET /api/reports/{id}
+Reports,Get by Number,Done,GET /api/reports/number/{num}
+Reports,Download PDF,Done,GET /api/reports/{id}/download
+Reports,Check Status,Done,GET /api/reports/{id}/status
+Reports,Delete Report,Done,DELETE /api/reports/{id}
+Users,List Users,Done,GET /api/doctors
+Users,Get User,Done,GET /api/doctors/{id}
+Users,Create User,Done,POST /api/doctors - Doctor creates receptionist only
+Users,Update User,Done,PUT /api/doctors/{id}
+Users,Change Password,Done,PUT /api/doctors/{id}/password
+Users,Deactivate User,Done,DELETE /api/doctors/{id}
+Users,Activate User,Done,PUT /api/doctors/{id}/activate
+Super Admin,Dashboard,Done,GET /api/super-admin/dashboard
+Super Admin,List Clinics,Done,GET /api/super-admin/clinics
+Super Admin,Get Clinic,Done,GET /api/super-admin/clinics/{id}
+Super Admin,Create Clinic,Done,POST /api/super-admin/clinics
+Super Admin,Update Clinic,Done,PUT /api/super-admin/clinics/{id}
+Super Admin,Deactivate Clinic,Done,DELETE /api/super-admin/clinics/{id}
+Super Admin,Activate Clinic,Done,POST /api/super-admin/clinics/{id}/activate
+Super Admin,Create Clinic User,Done,POST /api/super-admin/clinics/{id}/users - 1 doctor limit
+Multi-Clinic,Clinic Model,Done,Database model with license_key
+Multi-Clinic,Free License System,Done,No expiry - 1 doctor per clinic
+Multi-Clinic,Role Permissions,Done,Doctor can create receptionist only
+Deployment,Server Setup,Done,Bluehost VPS - AlmaLinux
+Deployment,Nginx Config,Done,Reverse proxy on port 80
+Deployment,Gunicorn Service,Done,Flask app on port 5000
+Deployment,PostgreSQL,Done,Database setup
+Deployment,Redis,Done,Celery broker
+Deployment,Celery Worker,Done,Background tasks
+Deployment,GitHub Actions (main),Done,Auto deploy on push to main
+Deployment,GitHub Actions (dev),Done,Auto deploy on push to dev
+Health,Health Check API,Done,GET /health

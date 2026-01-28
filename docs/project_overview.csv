@@ -1,9 +1,0 @@
-Field,Value
-Project Name,Offline Clinic
-Type,Flask API Backend
-Server,Bluehost VPS (129.121.75.225)
-Database,PostgreSQL
-Cache/Queue,Redis + Celery
-Python Version,3.11
-Status,In Development
-GitHub,CoaxnTechnology/Offline-Clinic
