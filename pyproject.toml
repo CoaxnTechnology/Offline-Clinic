@@ -29,6 +29,7 @@ dependencies = [
     "structlog>=24.1.0",
     "requests>=2.32.5",
     "numpy>=2.4.1",
+    "flask-jwt-extended>=4.7.1",
 ]
 
 
