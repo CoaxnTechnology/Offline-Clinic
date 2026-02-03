@@ -1,9 +1,13 @@
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
-from app.models import Admin
+from app.models import Admin, Clinic
 from app.extensions import db
 from app.utils.decorators import require_role
+from app.services.email_service import send_credentials_email
 from datetime import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/doctors')
 
@@ -228,7 +232,26 @@ def create_admin():
         db.session.add(admin)
         db.session.commit()
         
-        # Step 9: Return created admin (without password)
+        # Step 9: Send credentials email
+        clinic_name = None
+        if admin.clinic_id:
+            clinic = Clinic.query.get(admin.clinic_id)
+            clinic_name = clinic.name if clinic else None
+        
+        email_sent = send_credentials_email(
+            email=admin.email,
+            username=admin.username,
+            password=data['password'],  # Send plain password before it was hashed
+            role=admin.role,
+            clinic_name=clinic_name
+        )
+        
+        if email_sent:
+            logger.info(f"Credentials email sent to {admin.email}")
+        else:
+            logger.warning(f"Failed to send credentials email to {admin.email}")
+        
+        # Step 10: Return created admin (without password)
         return jsonify({
             'success': True,
             'data': {
@@ -242,7 +265,8 @@ def create_admin():
                 'is_active': admin.is_active,
                 'created_at': admin.created_at.isoformat()
             },
-            'message': f'Admin user "{admin.username}" created successfully'
+            'email_sent': email_sent,
+            'message': f'User "{admin.username}" created successfully' + (' and credentials sent via email' if email_sent else ' (email not configured)')
         }), 201
         
     except Exception as e:

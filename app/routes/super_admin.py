@@ -5,9 +5,13 @@ from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
 from app.models import Clinic, Admin
 from app.extensions import db
+from app.services.email_service import send_credentials_email
 from datetime import datetime
 import uuid
 import hashlib
+import logging
+
+logger = logging.getLogger(__name__)
 
 super_admin_bp = Blueprint('super_admin', __name__, url_prefix='/api/super-admin')
 
@@ -241,9 +245,23 @@ def create_clinic_user(clinic_id):
         db.session.add(user)
         db.session.commit()
         
+        # Send credentials email
+        email_sent = send_credentials_email(
+            email=user.email,
+            username=user.username,
+            password=data['password'],  # Plain password before hashing
+            role=user.role,
+            clinic_name=clinic.name
+        )
+        
+        if email_sent:
+            logger.info(f"Credentials email sent to {user.email}")
+        else:
+            logger.warning(f"Failed to send credentials email to {user.email}")
+        
         return jsonify({
             'success': True,
-            'message': 'User created successfully',
+            'message': 'User created successfully' + (' and credentials sent via email' if email_sent else ''),
             'data': {
                 'id': user.id,
                 'username': user.username,
@@ -251,7 +269,8 @@ def create_clinic_user(clinic_id):
                 'role': user.role,
                 'clinic_id': clinic_id,
                 'clinic_name': clinic.name
-            }
+            },
+            'email_sent': email_sent
         }), 201
         
     except Exception as e:
