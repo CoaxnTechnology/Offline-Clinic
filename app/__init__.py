@@ -152,7 +152,8 @@ def create_app(config_name=None):
         app.register_blueprint(auth_bp)
         app.register_blueprint(patient_bp)
         app.register_blueprint(appointment_bp)
-        app.register_blueprint(admin_bp)
+        app.register_blueprint(admin_bp)  # /api/doctors
+        app.register_blueprint(admin_bp, url_prefix='/api/receptionists', name='receptionist')  # Alias
         app.register_blueprint(dicom_bp)
         app.register_blueprint(reporting_bp)
         app.register_blueprint(super_admin_bp)

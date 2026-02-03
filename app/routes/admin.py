@@ -24,11 +24,27 @@ def require_super_admin_or_self(admin_id=None):
     return False
 
 
+def can_doctor_manage(target_user):
+    """
+    Check if current doctor can manage target user (receptionist in same clinic)
+    """
+    if current_user.is_super_admin:
+        return True
+    if current_user.role == 'doctor':
+        if target_user.role == 'receptionist' and target_user.clinic_id == current_user.clinic_id:
+            return True
+    if current_user.id == target_user.id:
+        return True
+    return False
+
+
 @admin_bp.route('', methods=['GET'])
 @login_required
 def list_admins():
     """
-    List all admin users
+    List admin users
+    - Super admin: sees all users
+    - Doctor: sees self + receptionists in their clinic
     Query params: role, is_active, page, limit
     """
     # Step 1: Get query parameters
@@ -46,7 +62,20 @@ def list_admins():
     # Step 3: Start building query
     query = Admin.query
     
-    # Step 4: Apply filters
+    # Step 4: Filter by clinic for doctor
+    if not current_user.is_super_admin:
+        if current_user.role == 'doctor':
+            from sqlalchemy import or_
+            query = query.filter(
+                or_(
+                    Admin.id == current_user.id,
+                    (Admin.clinic_id == current_user.clinic_id) & (Admin.role == 'receptionist')
+                )
+            )
+        else:
+            query = query.filter(Admin.id == current_user.id)
+    
+    # Step 5: Apply filters
     if filter_role:
         query = query.filter(Admin.role == filter_role)
     
@@ -54,17 +83,17 @@ def list_admins():
         is_active_bool = filter_active.lower() == 'true'
         query = query.filter(Admin.is_active == is_active_bool)
     
-    # Step 5: Get total count
+    # Step 6: Get total count
     total = query.count()
     
-    # Step 6: Apply pagination
+    # Step 7: Apply pagination
     admins = query.order_by(Admin.created_at.desc()).paginate(
         page=page,
         per_page=limit,
         error_out=False
     )
     
-    # Step 7: Format response (exclude password_hash)
+    # Step 8: Format response
     result = []
     for admin in admins.items:
         result.append({
@@ -77,6 +106,7 @@ def list_admins():
             'role': admin.role,
             'is_active': admin.is_active,
             'is_super_admin': admin.is_super_admin,
+            'clinic_id': admin.clinic_id,
             'last_login': admin.last_login.isoformat() if admin.last_login else None,
             'login_count': admin.login_count,
             'created_at': admin.created_at.isoformat()
@@ -101,6 +131,8 @@ def list_admins():
 def get_admin(admin_id):
     """
     Get single admin by ID
+    - Super admin: can view any user
+    - Doctor: can view self + receptionists in their clinic
     """
     # Step 1: Find admin
     admin = Admin.query.get(admin_id)
@@ -109,11 +141,11 @@ def get_admin(admin_id):
     if not admin:
         return jsonify({
             'success': False,
-            'error': 'Admin not found'
+            'error': 'User not found'
         }), 404
     
-    # Step 3: Check permission (super admin or own profile)
-    if not require_super_admin_or_self(admin_id):
+    # Step 3: Check permission
+    if not can_doctor_manage(admin):
         return jsonify({
             'success': False,
             'error': 'Permission denied'
@@ -132,6 +164,7 @@ def get_admin(admin_id):
             'role': admin.role,
             'is_active': admin.is_active,
             'is_super_admin': admin.is_super_admin,
+            'clinic_id': admin.clinic_id,
             'last_login': admin.last_login.isoformat() if admin.last_login else None,
             'login_count': admin.login_count,
             'created_at': admin.created_at.isoformat(),
@@ -214,6 +247,13 @@ def create_admin():
         # Generate token for setting password
         token = secrets.token_urlsafe(32)
         
+        # Assign clinic_id: doctor creates receptionist in same clinic
+        clinic_id = None
+        if current_user.role == 'doctor' and current_user.clinic_id:
+            clinic_id = current_user.clinic_id
+        elif current_user.is_super_admin and data.get('clinic_id'):
+            clinic_id = data.get('clinic_id')
+        
         admin = Admin(
             username=data['username'],
             email=data['email'],
@@ -221,6 +261,7 @@ def create_admin():
             last_name=data['last_name'],
             phone=data.get('phone'),
             role=data['role'],
+            clinic_id=clinic_id,
             is_active=False,  # Not active until password is set
             is_super_admin=False,
             reset_token=token,
@@ -286,18 +327,19 @@ def create_admin():
 def update_admin(admin_id):
     """
     Update admin information
-    Access: Super admin or own profile
+    - Super admin: can update any user
+    - Doctor: can update self + receptionists in their clinic
     """
     # Step 1: Find admin
     admin = Admin.query.get(admin_id)
     if not admin:
         return jsonify({
             'success': False,
-            'error': 'Admin not found'
+            'error': 'User not found'
         }), 404
     
     # Step 2: Check permission
-    if not require_super_admin_or_self(admin_id):
+    if not can_doctor_manage(admin):
         return jsonify({
             'success': False,
             'error': 'Permission denied'
@@ -319,6 +361,9 @@ def update_admin(admin_id):
         # Super admin can also update role and is_active
         if current_user.is_super_admin:
             updatable_fields.extend(['role', 'is_active'])
+        # Doctor can update is_active for receptionists
+        elif current_user.role == 'doctor' and admin.role == 'receptionist':
+            updatable_fields.append('is_active')
         
         for field in updatable_fields:
             if field in data:
@@ -363,16 +408,17 @@ def update_admin(admin_id):
                 'phone': admin.phone,
                 'role': admin.role,
                 'is_active': admin.is_active,
+                'clinic_id': admin.clinic_id,
                 'updated_at': admin.updated_at.isoformat()
             },
-            'message': 'Admin updated successfully'
+            'message': 'User updated successfully'
         }), 200
         
     except Exception as e:
         db.session.rollback()
         return jsonify({
             'success': False,
-            'error': f'Failed to update admin: {str(e)}'
+            'error': f'Failed to update user: {str(e)}'
         }), 500
 
 
@@ -457,23 +503,24 @@ def change_password(admin_id):
 @login_required
 def delete_admin(admin_id):
     """
-    Deactivate admin (soft delete by setting is_active=False)
-    Access: Super admin only
+    Deactivate user (soft delete by setting is_active=False)
+    - Super admin: can deactivate any user
+    - Doctor: can deactivate receptionists in their clinic
     """
-    # Step 1: Check if user is super admin
-    if not current_user.is_super_admin:
-        return jsonify({
-            'success': False,
-            'error': 'Permission denied. Only super admin can deactivate admins.'
-        }), 403
-    
-    # Step 2: Find admin
+    # Step 1: Find admin
     admin = Admin.query.get(admin_id)
     if not admin:
         return jsonify({
             'success': False,
-            'error': 'Admin not found'
+            'error': 'User not found'
         }), 404
+    
+    # Step 2: Check permission
+    if not can_doctor_manage(admin):
+        return jsonify({
+            'success': False,
+            'error': 'Permission denied'
+        }), 403
     
     # Step 3: Prevent deleting super admin
     if admin.is_super_admin:
@@ -489,21 +536,28 @@ def delete_admin(admin_id):
             'error': 'Cannot deactivate your own account'
         }), 400
     
-    # Step 5: Deactivate admin
+    # Step 5: Doctor can only deactivate receptionists
+    if current_user.role == 'doctor' and admin.role != 'receptionist':
+        return jsonify({
+            'success': False,
+            'error': 'Doctors can only deactivate receptionists'
+        }), 403
+    
+    # Step 6: Deactivate user
     try:
         admin.is_active = False
         db.session.commit()
         
         return jsonify({
             'success': True,
-            'message': f'Admin "{admin.username}" deactivated successfully'
+            'message': f'User "{admin.username}" deactivated successfully'
         }), 200
         
     except Exception as e:
         db.session.rollback()
         return jsonify({
             'success': False,
-            'error': f'Failed to deactivate admin: {str(e)}'
+            'error': f'Failed to deactivate user: {str(e)}'
         }), 500
 
 
@@ -511,37 +565,45 @@ def delete_admin(admin_id):
 @login_required
 def activate_admin(admin_id):
     """
-    Activate admin (set is_active=True)
-    Access: Super admin only
+    Activate user (set is_active=True)
+    - Super admin: can activate any user
+    - Doctor: can activate receptionists in their clinic
     """
-    # Step 1: Check if user is super admin
-    if not current_user.is_super_admin:
-        return jsonify({
-            'success': False,
-            'error': 'Permission denied. Only super admin can activate admins.'
-        }), 403
-    
-    # Step 2: Find admin
+    # Step 1: Find admin
     admin = Admin.query.get(admin_id)
     if not admin:
         return jsonify({
             'success': False,
-            'error': 'Admin not found'
+            'error': 'User not found'
         }), 404
     
-    # Step 3: Activate admin
+    # Step 2: Check permission
+    if not can_doctor_manage(admin):
+        return jsonify({
+            'success': False,
+            'error': 'Permission denied'
+        }), 403
+    
+    # Step 3: Doctor can only activate receptionists
+    if current_user.role == 'doctor' and admin.role != 'receptionist':
+        return jsonify({
+            'success': False,
+            'error': 'Doctors can only activate receptionists'
+        }), 403
+    
+    # Step 4: Activate user
     try:
         admin.is_active = True
         db.session.commit()
         
         return jsonify({
             'success': True,
-            'message': f'Admin "{admin.username}" activated successfully'
+            'message': f'User "{admin.username}" activated successfully'
         }), 200
         
     except Exception as e:
         db.session.rollback()
         return jsonify({
             'success': False,
-            'error': f'Failed to activate admin: {str(e)}'
+            'error': f'Failed to activate user: {str(e)}'
         }), 500
