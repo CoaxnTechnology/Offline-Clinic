@@ -36,7 +36,7 @@ def create_app(config_name=None):
     
     # Enable CORS for localhost:8080
     CORS(app, 
-         resources={r"/*": {"origins": ["http://localhost:8080", "http://127.0.0.1:8080"]}},
+         resources={r"/*": {"origins": ["http://localhost:8080"]}},
          supports_credentials=True,
          allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
