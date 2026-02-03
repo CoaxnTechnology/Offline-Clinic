@@ -34,9 +34,9 @@ def create_app(config_name=None):
     bcrypt.init_app(app)
     login_manager.init_app(app)
     
-    # Enable CORS for all origins with credentials support
+    # Enable CORS for localhost:8080
     CORS(app, 
-         resources={r"/*": {"origins": "*"}},
+         resources={r"/*": {"origins": ["http://localhost:8080", "http://127.0.0.1:8080"]}},
          supports_credentials=True,
          allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
