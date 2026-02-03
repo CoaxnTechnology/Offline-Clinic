@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity
+from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
 from app.models import Admin
 from app.extensions import db
 from datetime import datetime, timedelta   # if not already imported
@@ -122,3 +122,26 @@ def get_current_user():
             'login_count': admin.login_count
         }
     }), 200
+
+
+@auth_bp.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def refresh():
+    """Refresh access token using refresh token"""
+    try:
+        current_user = get_jwt_identity()
+        new_access_token = create_access_token(
+            identity=current_user,
+            fresh=False  # refreshed tokens are not fresh
+        )
+        return jsonify({
+            'success': True,
+            'access_token': new_access_token,
+            'token_type': 'bearer',
+            'expires_in': 3600
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': 'Could not refresh token'
+        }), 401

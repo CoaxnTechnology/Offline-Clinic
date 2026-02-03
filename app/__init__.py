@@ -29,9 +29,13 @@ def create_app(config_name=None):
     
     # Initialize extensions first (before error handlers)
     db.init_app(app)
-    migrate.init_app(app, db)
+    migrate.init_app(app)
     bcrypt.init_app(app)
     login_manager.init_app(app)
+    
+    # Initialize JWT
+    from flask_jwt_extended import JWTManager
+    jwt = JWTManager(app)
     
     # Initialize CORS
     from app.utils.cors import init_cors
