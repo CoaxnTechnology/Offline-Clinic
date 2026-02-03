@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request
+from flask_cors import CORS
 from .extensions import db, migrate, bcrypt, login_manager, celery
 import logging
 import os
@@ -32,6 +33,14 @@ def create_app(config_name=None):
     migrate.init_app(app, db)
     bcrypt.init_app(app)
     login_manager.init_app(app)
+    
+    # Enable CORS for all origins with credentials support
+    CORS(app, 
+         resources={r"/*": {"origins": "*"}},
+         supports_credentials=True,
+         allow_headers=["Content-Type", "Authorization", "X-Requested-With"],
+         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+         expose_headers=["Content-Type", "Authorization"])
     
     # Initialize Celery
     celery.conf.update(

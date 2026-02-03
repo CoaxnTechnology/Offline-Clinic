@@ -223,7 +223,7 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"first_name\": \"Alice\",\n    \"last_name\": \"Johnson\",\n    \"date_of_birth\": \"1990-05-15\",\n    \"gender\": \"female\",\n    \"phone\": \"1234567890\",\n    \"email\": \"alice@example.com\",\n    \"address\": \"123 Main St\"\n}"
+              "raw": "{\n    \"title\": \"Mr\",\n    \"first_name\": \"Alice\",\n    \"last_name\": \"Johnson\",\n    \"birth_date\": \"1990-05-15\",\n    \"gender\": \"Female\",\n    \"phone\": \"1234567890\",\n    \"email\": \"alice@example.com\",\n    \"identity_number\": \"ID123456\",\n    \"height\": 165,\n    \"weight\": 60,\n    \"blood_group\": \"O+\",\n    \"notes\": \"No allergies\",\n    \"primary_doctor\": \"Dr. Smith\",\n    \"new_patient\": true\n}"
             },
             "url": "{{base_url}}/api/patients"
           }
@@ -247,7 +247,7 @@
           "name": "Get Patient",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/patients/1"
+            "url": "{{base_url}}/api/patients/P001"
           }
         },
         {
@@ -257,16 +257,16 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"phone\": \"9876543210\",\n    \"address\": \"456 New St\"\n}"
+              "raw": "{\n    \"phone\": \"9876543210\",\n    \"height\": 170,\n    \"weight\": 65,\n    \"notes\": \"Updated notes\"\n}"
             },
-            "url": "{{base_url}}/api/patients/1"
+            "url": "{{base_url}}/api/patients/P001"
           }
         },
         {
           "name": "Delete Patient",
           "request": {
             "method": "DELETE",
-            "url": "{{base_url}}/api/patients/1"
+            "url": "{{base_url}}/api/patients/P001"
           }
         },
         {

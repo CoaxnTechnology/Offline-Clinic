@@ -40,3 +40,4 @@ gunicorn>=22.0.0
 
 # Development & Debugging (not needed in production)
 # flask-debugtoolbar==0.13.1
+flask-cors
