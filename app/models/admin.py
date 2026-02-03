@@ -28,6 +28,10 @@ class Admin(db.Model, TimestampMixin, UserMixin):
     last_login = db.Column(db.DateTime, nullable=True)
     login_count = db.Column(db.Integer, default=0)
     
+    # Password reset
+    reset_token = db.Column(db.String(100), nullable=True)
+    reset_token_expiry = db.Column(db.DateTime, nullable=True)
+    
     def set_password(self, password):
         """Hash and set password"""
         self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')

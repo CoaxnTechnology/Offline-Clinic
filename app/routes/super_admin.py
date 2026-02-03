@@ -5,10 +5,11 @@ from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
 from app.models import Clinic, Admin
 from app.extensions import db
-from app.services.email_service import send_credentials_email
-from datetime import datetime
+from app.services.email_service import send_welcome_email
+from datetime import datetime, timedelta
 import uuid
 import hashlib
+import secrets
 import logging
 
 logger = logging.getLogger(__name__)
@@ -205,8 +206,8 @@ def create_clinic_user(clinic_id):
     
     data = request.get_json()
     
-    # Validate required fields
-    required = ['username', 'email', 'password', 'first_name', 'last_name', 'role']
+    # Validate required fields (password not required - will be set via email link)
+    required = ['username', 'email', 'first_name', 'last_name', 'role']
     for field in required:
         if not data.get(field):
             return jsonify({'success': False, 'error': f'{field} is required'}), 400
@@ -229,6 +230,9 @@ def create_clinic_user(clinic_id):
         return jsonify({'success': False, 'error': 'Email already exists'}), 400
     
     try:
+        # Generate token for setting password
+        token = secrets.token_urlsafe(32)
+        
         user = Admin(
             clinic_id=clinic_id,
             username=data['username'],
@@ -237,40 +241,48 @@ def create_clinic_user(clinic_id):
             last_name=data['last_name'],
             phone=data.get('phone'),
             role=data['role'],
-            is_active=True,
-            is_super_admin=False
+            is_active=False,  # Not active until password is set
+            is_super_admin=False,
+            reset_token=token,
+            reset_token_expiry=datetime.utcnow() + timedelta(hours=24)
         )
-        user.set_password(data['password'])
+        # Set a random temporary password
+        user.set_password(secrets.token_urlsafe(16))
         
         db.session.add(user)
         db.session.commit()
         
-        # Send credentials email
-        email_sent = send_credentials_email(
+        # Create set password link
+        set_password_link = f"http://129.121.75.225/set-password?token={token}"
+        
+        # Send welcome email with set password link
+        email_sent = send_welcome_email(
             email=user.email,
             username=user.username,
-            password=data['password'],  # Plain password before hashing
             role=user.role,
+            set_password_link=set_password_link,
             clinic_name=clinic.name
         )
         
         if email_sent:
-            logger.info(f"Credentials email sent to {user.email}")
+            logger.info(f"Welcome email sent to {user.email}")
         else:
-            logger.warning(f"Failed to send credentials email to {user.email}")
+            logger.warning(f"Failed to send welcome email to {user.email}")
         
         return jsonify({
             'success': True,
-            'message': 'User created successfully' + (' and credentials sent via email' if email_sent else ''),
+            'message': 'User created. ' + ('Password setup link sent via email.' if email_sent else 'Email not configured.'),
             'data': {
                 'id': user.id,
                 'username': user.username,
                 'email': user.email,
                 'role': user.role,
                 'clinic_id': clinic_id,
-                'clinic_name': clinic.name
+                'clinic_name': clinic.name,
+                'is_active': user.is_active
             },
-            'email_sent': email_sent
+            'email_sent': email_sent,
+            'set_password_token': token if not email_sent else None
         }), 201
         
     except Exception as e:
