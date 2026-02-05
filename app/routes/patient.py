@@ -317,7 +317,29 @@ def update_patient(patient_id):
             'success': False,
             'error': 'Request body must be JSON'
         }), 400
-    
+
+    # Helper to normalize string fields on update: if explicitly set to empty -> "N/A"
+    def norm_str_update(field_name, current_value):
+        if field_name not in data:
+            return current_value
+        value = data.get(field_name)
+        if value is None:
+            return "N/A"
+        if isinstance(value, str) and not value.strip():
+            return "N/A"
+        return value
+
+    # Helper to normalize numeric fields on update: if explicitly empty -> 0
+    def norm_num_update(field_name, current_value):
+        if field_name not in data:
+            return current_value
+        value = data.get(field_name)
+        if value in (None, "", " "):
+            return 0
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return 0
     # Step 3: Update fields (only provided fields)
     try:
         # Check for duplicate phone if phone is being updated
@@ -338,24 +360,39 @@ def update_patient(patient_id):
                     'error': 'Email already exists'
                 }), 400
         
-        # List of updatable fields
-        updatable_fields = [
-            'title', 'first_name', 'last_name', 'maiden_name', 'gender',
-            'birth_date', 'phone', 'secondary_phone', 'other_phone',
-            'email', 'identity_number', 'social_security_number',
-            'occupation', 'height', 'weight', 'blood_group', 'smoker',
-            'cigarettes_per_day', 'family_history', 'medical_history',
-            'gynecological_history', 'allergies', 'notes', 'primary_doctor',
-            'delivery_location', 'legacy_number', 'new_patient'
-        ]
-        
-        for field in updatable_fields:
-            if field in data:
-                # Special handling for date fields
-                if field == 'birth_date':
-                    setattr(patient, field, parse_date(data[field]))
-                else:
-                    setattr(patient, field, data[field])
+        # Update scalar fields with normalization
+        patient.title = norm_str_update('title', patient.title)
+        if 'first_name' in data:
+            patient.first_name = data['first_name']
+        if 'last_name' in data:
+            patient.last_name = data['last_name']
+        patient.maiden_name = norm_str_update('maiden_name', patient.maiden_name)
+        patient.gender = norm_str_update('gender', patient.gender)
+        if 'birth_date' in data:
+            patient.birth_date = parse_date(data.get('birth_date'))
+        if 'phone' in data:
+            patient.phone = data['phone']
+        patient.secondary_phone = norm_str_update('secondary_phone', patient.secondary_phone)
+        patient.other_phone = norm_str_update('other_phone', patient.other_phone)
+        patient.email = norm_str_update('email', patient.email)
+        patient.identity_number = norm_str_update('identity_number', patient.identity_number)
+        patient.social_security_number = norm_str_update('social_security_number', patient.social_security_number)
+        patient.occupation = norm_str_update('occupation', patient.occupation)
+        patient.height = norm_num_update('height', patient.height)
+        patient.weight = norm_num_update('weight', patient.weight)
+        patient.blood_group = norm_str_update('blood_group', patient.blood_group)
+        patient.smoker = norm_str_update('smoker', patient.smoker)
+        patient.cigarettes_per_day = int(norm_num_update('cigarettes_per_day', patient.cigarettes_per_day or 0))
+        patient.family_history = norm_str_update('family_history', patient.family_history)
+        patient.medical_history = norm_str_update('medical_history', patient.medical_history)
+        patient.gynecological_history = norm_str_update('gynecological_history', patient.gynecological_history)
+        patient.allergies = norm_str_update('allergies', patient.allergies)
+        patient.notes = norm_str_update('notes', patient.notes)
+        patient.primary_doctor = norm_str_update('primary_doctor', patient.primary_doctor)
+        patient.delivery_location = norm_str_update('delivery_location', patient.delivery_location)
+        patient.legacy_number = norm_str_update('legacy_number', patient.legacy_number)
+        if 'new_patient' in data:
+            patient.new_patient = data.get('new_patient', patient.new_patient)
         
         # Update timestamp is automatic (TimestampMixin handles it)
         db.session.commit()

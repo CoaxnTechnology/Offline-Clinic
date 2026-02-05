@@ -154,8 +154,8 @@ def create_appointment():
             'error': 'Request body must be JSON'
         }), 400
     
-    # Step 2: Validate required fields
-    required_fields = ['patient_id', 'doctor', 'date', 'time']
+    # Step 2: Validate required fields (doctor is now auto-filled)
+    required_fields = ['patient_id', 'date', 'time']
     for field in required_fields:
         if not data.get(field):
             return jsonify({
@@ -171,7 +171,39 @@ def create_appointment():
             'error': f'Patient with ID {data["patient_id"]} not found'
         }), 404
     
-    # Step 4: Validate date format
+    # Step 4: Determine doctor name automatically
+    from app.models import Admin
+    user_id = int(get_jwt_identity())
+    current_user = Admin.query.get(user_id)
+
+    # If current user is a doctor, use their name
+    doctor_name = None
+    if current_user and current_user.role == 'doctor':
+        doctor_name = current_user.first_name or current_user.username
+        if current_user.last_name:
+            doctor_name = f"{doctor_name} {current_user.last_name}"
+    else:
+        # For receptionist (or others), use the single doctor of the clinic
+        clinic_id = current_user.clinic_id if current_user else None
+        clinic_doctor = None
+        if clinic_id:
+            clinic_doctor = Admin.query.filter_by(
+                clinic_id=clinic_id,
+                role='doctor',
+                is_active=True
+            ).first()
+        if clinic_doctor:
+            doctor_name = clinic_doctor.first_name or clinic_doctor.username
+            if clinic_doctor.last_name:
+                doctor_name = f"{doctor_name} {clinic_doctor.last_name}"
+
+    if not doctor_name:
+        return jsonify({
+            'success': False,
+            'error': 'No active doctor found for this clinic'
+        }), 400
+
+    # Step 5: Validate date format
     try:
         appointment_date = datetime.strptime(data['date'], '%Y-%m-%d').date()
     except ValueError:
@@ -180,7 +212,7 @@ def create_appointment():
             'error': 'Invalid date format. Use YYYY-MM-DD'
         }), 400
     
-    # Step 5: Validate time format (optional - check HH:MM format)
+    # Step 6: Validate time format (optional - check HH:MM format)
     time_str = data['time']
     if len(time_str) != 5 or time_str[2] != ':':
         return jsonify({
@@ -188,10 +220,10 @@ def create_appointment():
             'error': 'Invalid time format. Use HH:MM (e.g., 10:30)'
         }), 400
     
-    # Step 6: Check for duplicate appointment (same patient, doctor, date, time)
+    # Step 7: Check for duplicate appointment (same patient, doctor, date, time)
     existing = Appointment.query.filter_by(
         patient_id=data['patient_id'],
-        doctor=data['doctor'],
+        doctor=doctor_name,
         date=appointment_date,
         time=data['time']
     ).first()
@@ -202,11 +234,11 @@ def create_appointment():
             'error': 'Appointment already exists for this patient, doctor, date, and time'
         }), 400
     
-    # Step 7: Create new appointment
+    # Step 8: Create new appointment
     try:
         appointment = Appointment(
             patient_id=data['patient_id'],
-            doctor=data['doctor'],
+            doctor=doctor_name,
             department=data.get('department'),
             date=appointment_date,
             time=data['time'],
