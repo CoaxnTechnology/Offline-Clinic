@@ -3,7 +3,7 @@ Reporting API Routes
 Handles PDF report generation, listing, downloading, and management
 """
 from flask import Blueprint, request, jsonify, send_file, current_app
-from flask_login import login_required, current_user
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.extensions import db
 from app.models import DicomImage, Patient
 from app.utils.decorators import require_role
@@ -24,7 +24,7 @@ reporting_bp = Blueprint('reporting', __name__, url_prefix='/api/reports')
 
 
 @reporting_bp.route('', methods=['GET'])
-@login_required
+@jwt_required()
 def list_reports_endpoint():
     """
     List reports with pagination and filters
@@ -102,9 +102,13 @@ def list_reports_endpoint():
 
 
 @reporting_bp.route('/generate', methods=['POST'])
-@login_required
+@jwt_required()
 @require_role('doctor', 'receptionist')
 def generate_report():
+    from app.models import Admin
+    # Get current user from JWT
+    identity = get_jwt_identity()
+    current_user = Admin.query.get(identity['id'])
     """
     Generate PDF report for a DICOM study
     
@@ -217,7 +221,7 @@ def generate_report():
 
 
 @reporting_bp.route('/<int:report_id>', methods=['GET'])
-@login_required
+@jwt_required()
 def get_report(report_id):
     """Get report details by ID"""
     try:
@@ -243,7 +247,7 @@ def get_report(report_id):
 
 
 @reporting_bp.route('/number/<report_number>', methods=['GET'])
-@login_required
+@jwt_required()
 def get_report_by_number_endpoint(report_number):
     """Get report details by report number"""
     try:
@@ -269,7 +273,7 @@ def get_report_by_number_endpoint(report_number):
 
 
 @reporting_bp.route('/<int:report_id>/download', methods=['GET'])
-@login_required
+@jwt_required()
 def download_report(report_id):
     """Download PDF report file"""
     try:
@@ -319,7 +323,7 @@ def download_report(report_id):
 
 
 @reporting_bp.route('/<int:report_id>/status', methods=['GET'])
-@login_required
+@jwt_required()
 def get_report_status(report_id):
     """Get report generation status"""
     try:
@@ -364,7 +368,7 @@ def get_report_status(report_id):
 
 
 @reporting_bp.route('/<int:report_id>', methods=['DELETE'])
-@login_required
+@jwt_required()
 @require_role('doctor', 'receptionist')
 def delete_report_endpoint(report_id):
     """Delete a report and its PDF file"""

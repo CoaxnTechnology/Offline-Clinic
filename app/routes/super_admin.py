@@ -2,7 +2,7 @@
 Super Admin Routes for managing clinics (FREE - No Subscription)
 """
 from flask import Blueprint, request, jsonify
-from flask_login import login_required, current_user
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models import Clinic, Admin
 from app.extensions import db
 from app.services.email_service import send_welcome_email
@@ -30,7 +30,8 @@ def require_super_admin(f):
     from functools import wraps
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not current_user.is_authenticated or not current_user.is_super_admin:
+        identity = get_jwt_identity()
+        if not identity or not identity.get('is_super_admin'):
             return jsonify({
                 'success': False,
                 'error': 'Super admin access required'
@@ -42,7 +43,7 @@ def require_super_admin(f):
 # ==================== CLINIC MANAGEMENT ====================
 
 @super_admin_bp.route('/clinics', methods=['GET'])
-@login_required
+@jwt_required()
 @require_super_admin
 def list_clinics():
     """List all clinics"""
@@ -55,7 +56,7 @@ def list_clinics():
 
 
 @super_admin_bp.route('/clinics/<int:clinic_id>', methods=['GET'])
-@login_required
+@jwt_required()
 @require_super_admin
 def get_clinic(clinic_id):
     """Get clinic details"""
@@ -82,7 +83,7 @@ def get_clinic(clinic_id):
 
 
 @super_admin_bp.route('/clinics', methods=['POST'])
-@login_required
+@jwt_required()
 @require_super_admin
 def create_clinic():
     """Create new clinic (FREE)"""
@@ -120,7 +121,7 @@ def create_clinic():
 
 
 @super_admin_bp.route('/clinics/<int:clinic_id>', methods=['PUT'])
-@login_required
+@jwt_required()
 @require_super_admin
 def update_clinic(clinic_id):
     """Update clinic details"""
@@ -155,7 +156,7 @@ def update_clinic(clinic_id):
 
 
 @super_admin_bp.route('/clinics/<int:clinic_id>', methods=['DELETE'])
-@login_required
+@jwt_required()
 @require_super_admin
 def delete_clinic(clinic_id):
     """Deactivate clinic (soft delete)"""
@@ -173,7 +174,7 @@ def delete_clinic(clinic_id):
 
 
 @super_admin_bp.route('/clinics/<int:clinic_id>/activate', methods=['POST'])
-@login_required
+@jwt_required()
 @require_super_admin
 def activate_clinic(clinic_id):
     """Activate clinic"""
@@ -193,7 +194,7 @@ def activate_clinic(clinic_id):
 # ==================== CLINIC USER MANAGEMENT ====================
 
 @super_admin_bp.route('/clinics/<int:clinic_id>/users', methods=['POST'])
-@login_required
+@jwt_required()
 @require_super_admin
 def create_clinic_user(clinic_id):
     """Create user for specific clinic (1 doctor limit)"""
@@ -293,7 +294,7 @@ def create_clinic_user(clinic_id):
 # ==================== DASHBOARD / STATS ====================
 
 @super_admin_bp.route('/dashboard', methods=['GET'])
-@login_required
+@jwt_required()
 @require_super_admin
 def dashboard():
     """Get super admin dashboard stats"""

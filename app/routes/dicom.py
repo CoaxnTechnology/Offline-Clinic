@@ -3,7 +3,7 @@ DICOM API Routes
 Handles DICOM studies, images, MWL operations, and measurements
 """
 from flask import Blueprint, request, jsonify, send_file, abort, current_app
-from flask_login import login_required, current_user
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import or_, and_
 from datetime import datetime, date
 import os
@@ -43,7 +43,7 @@ dicom_bp = Blueprint('dicom', __name__, url_prefix='/api/dicom')
 
 
 @dicom_bp.route('/studies', methods=['GET'])
-@login_required
+@jwt_required()
 def list_studies():
     """
     List DICOM studies with optional filters
@@ -187,7 +187,7 @@ def list_studies():
 
 
 @dicom_bp.route('/studies/<study_instance_uid>', methods=['GET'])
-@login_required
+@jwt_required()
 def get_study(study_instance_uid):
     """Get detailed information about a DICOM study by study_instance_uid"""
     try:
@@ -258,7 +258,7 @@ def get_study(study_instance_uid):
 
 
 @dicom_bp.route('/images', methods=['GET'])
-@login_required
+@jwt_required()
 def list_images():
     """
     List DICOM images with optional filters
@@ -366,7 +366,7 @@ def list_images():
 
 
 @dicom_bp.route('/images/<int:image_id>', methods=['GET'])
-@login_required
+@jwt_required()
 def get_image(image_id):
     """Get detailed information about a DICOM image"""
     try:
@@ -394,7 +394,7 @@ def get_image(image_id):
 
 
 @dicom_bp.route('/images/<int:image_id>/file', methods=['GET'])
-@login_required
+@jwt_required()
 def get_image_file(image_id):
     """Download DICOM file - Production ready with security checks"""
     try:
@@ -435,7 +435,7 @@ def get_image_file(image_id):
 
 
 @dicom_bp.route('/images/<int:image_id>/thumbnail', methods=['GET'])
-@login_required
+@jwt_required()
 def get_image_thumbnail(image_id):
     """Get thumbnail image - Production ready with caching"""
     try:
@@ -480,9 +480,13 @@ def get_image_thumbnail(image_id):
 
 
 @dicom_bp.route('/appointments/<int:appointment_id>/send-mwl', methods=['POST'])
-@login_required
+@jwt_required()
 @require_role('receptionist', 'doctor')
 def send_mwl_for_appointment(appointment_id):
+    # Get current user from JWT
+    from app.models import Admin
+    identity = get_jwt_identity()
+    current_user = Admin.query.get(identity['id'])
     """
     Mark appointment as ready for MWL (Modality Worklist)
     This makes the appointment available in the DICOM worklist query
@@ -515,7 +519,12 @@ def send_mwl_for_appointment(appointment_id):
         
         db.session.commit()
         
-        logger.info(f"MWL sent for appointment {appointment_id} (patient: {patient.id}) by user {current_user.username}")
+        from app.models import Admin
+    # Get current user from JWT
+    identity = get_jwt_identity()
+    current_user = Admin.query.get(identity['id'])
+    # Get current user from JWT - moved to function start
+    logger.info(f"MWL sent for appointment {appointment_id} (patient: {patient.id}) by user {current_user.username}")
         
         return jsonify({
             'success': True,
@@ -544,7 +553,7 @@ def send_mwl_for_appointment(appointment_id):
 
 
 @dicom_bp.route('/measurements', methods=['GET'])
-@login_required
+@jwt_required()
 def list_measurements():
     """
     List DICOM measurements
@@ -608,7 +617,7 @@ def list_measurements():
 
 
 @dicom_bp.route('/server/status', methods=['GET'])
-@login_required
+@jwt_required()
 @require_role('doctor', 'technician')
 def get_server_status_route():
     """Get DICOM server status - Production ready with detailed metrics"""
@@ -665,9 +674,13 @@ def get_server_status_route():
 
 
 @dicom_bp.route('/server/start', methods=['POST'])
-@login_required
+@jwt_required()
 @require_role('doctor', 'technician')
 def start_servers():
+    # Get current user from JWT
+    from app.models import Admin
+    identity = get_jwt_identity()
+    current_user = Admin.query.get(identity['id'])
     """Start DICOM servers (MWL and Storage) - Production ready"""
     try:
         # Check if already running
@@ -714,9 +727,13 @@ def start_servers():
 
 
 @dicom_bp.route('/server/stop', methods=['POST'])
-@login_required
+@jwt_required()
 @require_role('doctor', 'technician')
 def stop_servers():
+    # Get current user from JWT
+    from app.models import Admin
+    identity = get_jwt_identity()
+    current_user = Admin.query.get(identity['id'])
     """Stop DICOM servers - Production ready with graceful shutdown"""
     try:
         logger.info(f"DICOM servers stop requested by user {current_user.username}")
@@ -760,7 +777,7 @@ def stop_servers():
 
 
 @dicom_bp.route('/patients/<patient_id>/studies', methods=['GET'])
-@login_required
+@jwt_required()
 def get_patient_studies(patient_id):
     """Get all DICOM studies for a specific patient - Production ready"""
     try:

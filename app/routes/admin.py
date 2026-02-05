@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from flask_login import login_required, current_user
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models import Admin, Clinic
 from app.extensions import db
 from app.utils.decorators import require_role
@@ -13,10 +13,12 @@ logger = logging.getLogger(__name__)
 admin_bp = Blueprint('admin', __name__, url_prefix='/api/doctors')
 
 
-def require_super_admin_or_self(admin_id=None):
+def require_super_admin_or_self(admin_id=None, current_user=None):
     """
     Helper function to check if user is super admin or accessing own profile
     """
+    if not current_user:
+        return False
     if current_user.is_super_admin:
         return True
     if admin_id and current_user.id == admin_id:
@@ -24,10 +26,12 @@ def require_super_admin_or_self(admin_id=None):
     return False
 
 
-def can_doctor_manage(target_user):
+def can_doctor_manage(target_user, current_user=None):
     """
     Check if current doctor can manage target user (receptionist in same clinic)
     """
+    if not current_user:
+        return False
     if current_user.is_super_admin:
         return True
     if current_user.role == 'doctor':
@@ -39,8 +43,11 @@ def can_doctor_manage(target_user):
 
 
 @admin_bp.route('', methods=['GET'])
-@login_required
+@jwt_required()
 def list_admins():
+    # Get current user from JWT
+    identity = get_jwt_identity()
+    current_user = Admin.query.get(identity['id'])
     """
     List admin users
     - Super admin: sees all users
@@ -65,11 +72,11 @@ def list_admins():
     # Step 4: Filter by clinic for doctor
     if not current_user.is_super_admin:
         if current_user.role == 'doctor':
-            from sqlalchemy import or_
+            from sqlalchemy import or_, and_
             query = query.filter(
                 or_(
                     Admin.id == current_user.id,
-                    (Admin.clinic_id == current_user.clinic_id) & (Admin.role == 'receptionist')
+                    and_(Admin.clinic_id == current_user.clinic_id, Admin.role == 'receptionist')
                 )
             )
         else:
@@ -127,8 +134,11 @@ def list_admins():
 
 
 @admin_bp.route('/<int:admin_id>', methods=['GET'])
-@login_required
+@jwt_required()
 def get_admin(admin_id):
+    # Get current user from JWT
+    identity = get_jwt_identity()
+    current_user = Admin.query.get(identity['id'])
     """
     Get single admin by ID
     - Super admin: can view any user
@@ -145,7 +155,7 @@ def get_admin(admin_id):
         }), 404
     
     # Step 3: Check permission
-    if not can_doctor_manage(admin):
+    if not can_doctor_manage(admin, current_user):
         return jsonify({
             'success': False,
             'error': 'Permission denied'
@@ -174,8 +184,11 @@ def get_admin(admin_id):
 
 
 @admin_bp.route('', methods=['POST'])
-@login_required
+@jwt_required()
 def create_admin():
+    # Get current user from JWT
+    identity = get_jwt_identity()
+    current_user = Admin.query.get(identity['id'])
     """
     Create new admin user
     Access: Super admin can create any role
@@ -323,8 +336,11 @@ def create_admin():
 
 
 @admin_bp.route('/<int:admin_id>', methods=['PUT'])
-@login_required
+@jwt_required()
 def update_admin(admin_id):
+    # Get current user from JWT
+    identity = get_jwt_identity()
+    current_user = Admin.query.get(identity['id'])
     """
     Update admin information
     - Super admin: can update any user
@@ -339,7 +355,7 @@ def update_admin(admin_id):
         }), 404
     
     # Step 2: Check permission
-    if not can_doctor_manage(admin):
+    if not can_doctor_manage(admin, current_user):
         return jsonify({
             'success': False,
             'error': 'Permission denied'
@@ -423,8 +439,11 @@ def update_admin(admin_id):
 
 
 @admin_bp.route('/<int:admin_id>/password', methods=['PUT'])
-@login_required
+@jwt_required()
 def change_password(admin_id):
+    # Get current user from JWT
+    identity = get_jwt_identity()
+    current_user = Admin.query.get(identity['id'])
     """
     Change admin password
     Access: Own profile only (or super admin)
@@ -438,7 +457,7 @@ def change_password(admin_id):
         }), 404
     
     # Step 2: Check permission (own profile or super admin)
-    if not require_super_admin_or_self(admin_id):
+    if not require_super_admin_or_self(admin_id, current_user):
         return jsonify({
             'success': False,
             'error': 'Permission denied. You can only change your own password.'
@@ -500,8 +519,11 @@ def change_password(admin_id):
 
 
 @admin_bp.route('/<int:admin_id>', methods=['DELETE'])
-@login_required
+@jwt_required()
 def delete_admin(admin_id):
+    # Get current user from JWT
+    identity = get_jwt_identity()
+    current_user = Admin.query.get(identity['id'])
     """
     Deactivate user (soft delete by setting is_active=False)
     - Super admin: can deactivate any user
@@ -516,7 +538,7 @@ def delete_admin(admin_id):
         }), 404
     
     # Step 2: Check permission
-    if not can_doctor_manage(admin):
+    if not can_doctor_manage(admin, current_user):
         return jsonify({
             'success': False,
             'error': 'Permission denied'
@@ -562,8 +584,11 @@ def delete_admin(admin_id):
 
 
 @admin_bp.route('/<int:admin_id>/activate', methods=['PUT'])
-@login_required
+@jwt_required()
 def activate_admin(admin_id):
+    # Get current user from JWT
+    identity = get_jwt_identity()
+    current_user = Admin.query.get(identity['id'])
     """
     Activate user (set is_active=True)
     - Super admin: can activate any user
@@ -578,7 +603,7 @@ def activate_admin(admin_id):
         }), 404
     
     # Step 2: Check permission
-    if not can_doctor_manage(admin):
+    if not can_doctor_manage(admin, current_user):
         return jsonify({
             'success': False,
             'error': 'Permission denied'

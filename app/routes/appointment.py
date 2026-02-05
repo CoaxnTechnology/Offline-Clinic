@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from flask_login import login_required, current_user
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models import Appointment, Patient
 from app.extensions import db
 from app.utils.decorators import require_role
@@ -9,7 +9,7 @@ appointment_bp = Blueprint('appointment', __name__, url_prefix='/api/appointment
 
 
 @appointment_bp.route('', methods=['GET'])
-@login_required
+@jwt_required()
 def list_appointments():
     """
     List all appointments with filters and pagination
@@ -97,7 +97,7 @@ def list_appointments():
 
 
 @appointment_bp.route('/<int:appointment_id>', methods=['GET'])
-@login_required
+@jwt_required()
 def get_appointment(appointment_id):
     """
     Get single appointment by ID
@@ -138,7 +138,7 @@ def get_appointment(appointment_id):
 
 
 @appointment_bp.route('', methods=['POST'])
-@login_required
+@jwt_required()
 @require_role('receptionist', 'doctor')
 def create_appointment():
     """
@@ -242,7 +242,7 @@ def create_appointment():
 
 
 @appointment_bp.route('/<int:appointment_id>', methods=['PUT'])
-@login_required
+@jwt_required()
 @require_role('receptionist', 'doctor', 'technician')
 def update_appointment(appointment_id):
     """
@@ -319,7 +319,7 @@ def update_appointment(appointment_id):
 
 
 @appointment_bp.route('/<int:appointment_id>/status', methods=['PUT'])
-@login_required
+@jwt_required()
 @require_role('doctor', 'technician')
 def update_appointment_status(appointment_id):
     """
@@ -392,7 +392,7 @@ def update_appointment_status(appointment_id):
 
 
 @appointment_bp.route('/<int:appointment_id>', methods=['DELETE'])
-@login_required
+@jwt_required()
 @require_role('receptionist', 'doctor')
 def delete_appointment(appointment_id):
     """
@@ -435,7 +435,7 @@ def delete_appointment(appointment_id):
 
 
 @appointment_bp.route('/schedule', methods=['POST'])
-@login_required
+@jwt_required()
 @require_role('receptionist')
 def schedule_appointments():
     """

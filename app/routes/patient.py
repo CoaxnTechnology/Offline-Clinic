@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from flask_login import login_required, current_user
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models import Patient, Appointment
 from app.extensions import db
 from app.utils.decorators import require_role
@@ -23,7 +23,7 @@ def parse_date(date_string):
 
 
 @patient_bp.route('', methods=['GET'])
-@login_required
+@jwt_required()
 def list_patients():
     """
     List all patients with pagination and search
@@ -89,7 +89,7 @@ def list_patients():
 
 
 @patient_bp.route('/<patient_id>', methods=['GET'])
-@login_required
+@jwt_required()
 def get_patient(patient_id):
     """
     Get single patient by ID
@@ -131,7 +131,7 @@ def get_patient(patient_id):
 
 
 @patient_bp.route('', methods=['POST'])
-@login_required
+@jwt_required()
 @require_role('receptionist', 'doctor')
 def create_patient():
     """
@@ -231,7 +231,7 @@ def create_patient():
 
 
 @patient_bp.route('/<patient_id>', methods=['PUT'])
-@login_required
+@jwt_required()
 @require_role('receptionist', 'doctor')
 def update_patient(patient_id):
     """
@@ -318,7 +318,7 @@ def update_patient(patient_id):
 
 
 @patient_bp.route('/<patient_id>', methods=['DELETE'])
-@login_required
+@jwt_required()
 @require_role('receptionist', 'doctor')
 def delete_patient(patient_id):
     """
@@ -361,7 +361,7 @@ def delete_patient(patient_id):
 
 
 @patient_bp.route('/search', methods=['GET'])
-@login_required
+@jwt_required()
 def search_patients():
     """
     Search patients by name, phone, or ID
