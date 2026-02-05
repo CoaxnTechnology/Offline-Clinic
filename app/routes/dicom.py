@@ -519,12 +519,10 @@ def send_mwl_for_appointment(appointment_id):
         
         db.session.commit()
         
-        from app.models import Admin
-    # Get current user from JWT
-    identity = get_jwt_identity()
-    current_user = Admin.query.get(identity['id'])
-    # Get current user from JWT - moved to function start
-    logger.info(f"MWL sent for appointment {appointment_id} (patient: {patient.id}) by user {current_user.username}")
+        logger.info(
+            f"MWL sent for appointment {appointment_id} (patient: {patient.id}) "
+            f"by user {current_user.username}"
+        )
         
         return jsonify({
             'success': True,
