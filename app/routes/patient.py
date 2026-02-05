@@ -142,7 +142,6 @@ def get_patient(patient_id):
             'delivery_location': patient.delivery_location,
             'legacy_number': patient.legacy_number,
             'new_patient': patient.new_patient,
-            'demographics': patient.demographics,
             'created_at': patient.created_at.isoformat(),
             'updated_at': patient.updated_at.isoformat()
         }
@@ -230,8 +229,7 @@ def create_patient():
             primary_doctor=data.get('primary_doctor'),
             delivery_location=data.get('delivery_location'),
             legacy_number=data.get('legacy_number'),
-            new_patient=data.get('new_patient', True),
-            demographics=data.get('demographics')
+            new_patient=data.get('new_patient', True)
         )
         
         db.session.add(patient)
@@ -313,7 +311,7 @@ def update_patient(patient_id):
             'occupation', 'height', 'weight', 'blood_group', 'smoker',
             'cigarettes_per_day', 'family_history', 'medical_history',
             'gynecological_history', 'allergies', 'notes', 'primary_doctor',
-            'delivery_location', 'legacy_number', 'new_patient', 'demographics'
+            'delivery_location', 'legacy_number', 'new_patient'
         ]
         
         for field in updatable_fields:
