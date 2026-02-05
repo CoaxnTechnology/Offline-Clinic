@@ -64,7 +64,7 @@ def list_patients():
         error_out=False
     )
     
-    # Step 7: Format response
+    # Step 7: Format response (FULL patient info per item)
     return jsonify({
         'success': True,
         'data': [{
@@ -73,16 +73,30 @@ def list_patients():
             'first_name': p.first_name,
             'last_name': p.last_name,
             'maiden_name': p.maiden_name,
+            'gender': p.gender,
+            'birth_date': p.birth_date.isoformat() if p.birth_date else None,
             'phone': p.phone,
             'secondary_phone': p.secondary_phone,
             'other_phone': p.other_phone,
             'email': p.email,
-            'gender': p.gender,
-            'birth_date': p.birth_date.isoformat() if p.birth_date else None,
+            'identity_number': p.identity_number,
+            'social_security_number': p.social_security_number,
+            'height': p.height,
+            'weight': p.weight,
             'blood_group': p.blood_group,
+            'smoker': p.smoker,
+            'cigarettes_per_day': p.cigarettes_per_day,
+            'family_history': p.family_history,
+            'medical_history': p.medical_history,
+            'gynecological_history': p.gynecological_history,
+            'allergies': p.allergies,
+            'notes': p.notes,
             'primary_doctor': p.primary_doctor,
+            'delivery_location': p.delivery_location,
+            'legacy_number': p.legacy_number,
             'new_patient': p.new_patient,
-            'created_at': p.created_at.isoformat()
+            'created_at': p.created_at.isoformat(),
+            'updated_at': p.updated_at.isoformat() if p.updated_at else None
         } for p in patients.items],
         'pagination': {
             'page': page,
