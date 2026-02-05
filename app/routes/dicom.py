@@ -485,8 +485,8 @@ def get_image_thumbnail(image_id):
 def send_mwl_for_appointment(appointment_id):
     # Get current user from JWT
     from app.models import Admin
-    identity = get_jwt_identity()
-    current_user = Admin.query.get(identity['id'])
+    user_id = int(get_jwt_identity())
+    current_user = Admin.query.get(user_id)
     """
     Mark appointment as ready for MWL (Modality Worklist)
     This makes the appointment available in the DICOM worklist query
@@ -677,8 +677,8 @@ def get_server_status_route():
 def start_servers():
     # Get current user from JWT
     from app.models import Admin
-    identity = get_jwt_identity()
-    current_user = Admin.query.get(identity['id'])
+    user_id = int(get_jwt_identity())
+    current_user = Admin.query.get(user_id)
     """Start DICOM servers (MWL and Storage) - Production ready"""
     try:
         # Check if already running
@@ -730,8 +730,8 @@ def start_servers():
 def stop_servers():
     # Get current user from JWT
     from app.models import Admin
-    identity = get_jwt_identity()
-    current_user = Admin.query.get(identity['id'])
+    user_id = int(get_jwt_identity())
+    current_user = Admin.query.get(user_id)
     """Stop DICOM servers - Production ready with graceful shutdown"""
     try:
         logger.info(f"DICOM servers stop requested by user {current_user.username}")

@@ -1,5 +1,11 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
+from flask_jwt_extended import (
+    create_access_token,
+    create_refresh_token,
+    jwt_required,
+    get_jwt_identity,
+    get_jwt,
+)
 from app.models import Admin
 from app.extensions import db
 from datetime import datetime, timedelta   # if not already imported
@@ -46,22 +52,29 @@ def login():
     db.session.commit()
     
     # ── JWT part ──────────────────────────────────────────────────────────────
-    # Identity can be user id, username, or even dict with more info
-    identity = {
-        "id": admin.id,
+    # Use user id as identity (must be a string for JWT "sub" claim)
+    # and put extra info into additional claims.
+    identity = str(admin.id)
+    additional_claims = {
         "username": admin.username,
-        "role": admin.role
+        "role": admin.role,
+        "is_super_admin": admin.is_super_admin,
+        "clinic_id": admin.clinic_id,
     }
     
     # Create access token (short-lived)
     access_token = create_access_token(
         identity=identity,
-        fresh=True,                    # marks it as "fresh" login
-        expires_delta=timedelta(hours=1)  # optional override
+        additional_claims=additional_claims,
+        fresh=True,                         # marks it as "fresh" login
+        expires_delta=timedelta(hours=1)    # optional override
     )
     
     # Optional: refresh token (long-lived, used to get new access tokens)
-    refresh_token = create_refresh_token(identity=identity)
+    refresh_token = create_refresh_token(
+        identity=identity,
+        additional_claims=additional_claims,
+    )
     
     # Response – this is what frontend will receive and store
     return jsonify({
@@ -98,11 +111,11 @@ def logout():
 @jwt_required()   # ← change from @login_required
 def get_current_user():
     """Get current logged-in admin information using JWT"""
-    # Get identity from token
-    identity = get_jwt_identity()   # returns the dict or value you passed
+    # Get user id from token (stored as string)
+    user_id = get_jwt_identity()
     
     # Usually fetch full user from DB (don't store sensitive data in JWT)
-    admin = Admin.query.get(identity['id'])
+    admin = Admin.query.get(int(user_id))
     
     if not admin:
         return jsonify({'success': False, 'error': 'User not found'}), 404
@@ -129,9 +142,19 @@ def get_current_user():
 def refresh():
     """Refresh access token using refresh token"""
     try:
-        current_user = get_jwt_identity()
+        # Identity is user id (string)
+        identity = get_jwt_identity()
+        # Reuse custom claims from existing token
+        claims = get_jwt()
+        additional_claims = {
+            "username": claims.get("username"),
+            "role": claims.get("role"),
+            "is_super_admin": claims.get("is_super_admin"),
+            "clinic_id": claims.get("clinic_id"),
+        }
         new_access_token = create_access_token(
-            identity=current_user,
+            identity=identity,
+            additional_claims=additional_claims,
             fresh=False  # refreshed tokens are not fresh
         )
         return jsonify({

@@ -46,8 +46,8 @@ def can_doctor_manage(target_user, current_user=None):
 @jwt_required()
 def list_admins():
     # Get current user from JWT
-    identity = get_jwt_identity()
-    current_user = Admin.query.get(identity['id'])
+    user_id = int(get_jwt_identity())
+    current_user = Admin.query.get(user_id)
     """
     List admin users
     - Super admin: sees all users
@@ -137,8 +137,8 @@ def list_admins():
 @jwt_required()
 def get_admin(admin_id):
     # Get current user from JWT
-    identity = get_jwt_identity()
-    current_user = Admin.query.get(identity['id'])
+    user_id = int(get_jwt_identity())
+    current_user = Admin.query.get(user_id)
     """
     Get single admin by ID
     - Super admin: can view any user
@@ -187,8 +187,8 @@ def get_admin(admin_id):
 @jwt_required()
 def create_admin():
     # Get current user from JWT
-    identity = get_jwt_identity()
-    current_user = Admin.query.get(identity['id'])
+    user_id = int(get_jwt_identity())
+    current_user = Admin.query.get(user_id)
     """
     Create new admin user
     Access: Super admin can create any role
@@ -339,8 +339,8 @@ def create_admin():
 @jwt_required()
 def update_admin(admin_id):
     # Get current user from JWT
-    identity = get_jwt_identity()
-    current_user = Admin.query.get(identity['id'])
+    user_id = int(get_jwt_identity())
+    current_user = Admin.query.get(user_id)
     """
     Update admin information
     - Super admin: can update any user
@@ -442,8 +442,8 @@ def update_admin(admin_id):
 @jwt_required()
 def change_password(admin_id):
     # Get current user from JWT
-    identity = get_jwt_identity()
-    current_user = Admin.query.get(identity['id'])
+    user_id = int(get_jwt_identity())
+    current_user = Admin.query.get(user_id)
     """
     Change admin password
     Access: Own profile only (or super admin)
@@ -522,8 +522,8 @@ def change_password(admin_id):
 @jwt_required()
 def delete_admin(admin_id):
     # Get current user from JWT
-    identity = get_jwt_identity()
-    current_user = Admin.query.get(identity['id'])
+    user_id = int(get_jwt_identity())
+    current_user = Admin.query.get(user_id)
     """
     Deactivate user (soft delete by setting is_active=False)
     - Super admin: can deactivate any user
@@ -587,8 +587,8 @@ def delete_admin(admin_id):
 @jwt_required()
 def activate_admin(admin_id):
     # Get current user from JWT
-    identity = get_jwt_identity()
-    current_user = Admin.query.get(identity['id'])
+    user_id = int(get_jwt_identity())
+    current_user = Admin.query.get(user_id)
     """
     Activate user (set is_active=True)
     - Super admin: can activate any user

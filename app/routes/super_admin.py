@@ -2,7 +2,7 @@
 Super Admin Routes for managing clinics (FREE - No Subscription)
 """
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
 from app.models import Clinic, Admin
 from app.extensions import db
 from app.services.email_service import send_welcome_email
@@ -30,8 +30,9 @@ def require_super_admin(f):
     from functools import wraps
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        identity = get_jwt_identity()
-        if not identity or not identity.get('is_super_admin'):
+        # Super admin flag is stored in JWT custom claims
+        claims = get_jwt()
+        if not claims or not claims.get('is_super_admin'):
             return jsonify({
                 'success': False,
                 'error': 'Super admin access required'

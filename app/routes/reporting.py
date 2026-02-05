@@ -107,8 +107,8 @@ def list_reports_endpoint():
 def generate_report():
     from app.models import Admin
     # Get current user from JWT
-    identity = get_jwt_identity()
-    current_user = Admin.query.get(identity['id'])
+    user_id = int(get_jwt_identity())
+    current_user = Admin.query.get(user_id)
     """
     Generate PDF report for a DICOM study
     
