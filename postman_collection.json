@@ -3,6 +3,16 @@
     "name": "Clinic Management System",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
   "variable": [
     {
       "key": "base_url",
@@ -17,13 +27,40 @@
           "name": "Login",
           "request": {
             "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n    \"username\": \"admin\",\n    \"password\": \"password123\"\n}"
             },
             "url": "{{base_url}}/api/auth/login"
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "let json = {};\n",
+                  "try {\n",
+                  "  json = pm.response.json();\n",
+                  "} catch (e) {\n",
+                  "  console.log('No JSON body');\n",
+                  "}\n",
+                  "if (json && json.access_token) {\n",
+                  "  pm.collectionVariables.set('access_token', json.access_token);\n",
+                  "  console.log('Access token saved to collection variable');\n",
+                  "} else {\n",
+                  "  console.log('No access_token field in response');\n",
+                  "}"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Logout",
