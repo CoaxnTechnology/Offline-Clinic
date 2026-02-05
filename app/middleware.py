@@ -1,6 +1,4 @@
-"""
-Middleware for production security and performance
-"""
+
 from flask import request, jsonify
 import logging
 
