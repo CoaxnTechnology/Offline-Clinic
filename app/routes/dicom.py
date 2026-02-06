@@ -511,16 +511,22 @@ def send_mwl_for_appointment(appointment_id):
             logger.warning(f"Attempted to send MWL for past appointment: {appointment_id}")
             # Still allow it, but log warning
         
+        # PDF spec: generate AccessionNumber and MWL IDs once (immutable); then publish to MWL
+        if appointment.accession_number is None:
+            appointment.accession_number = f"ACC{appointment.id:08d}"
+            appointment.requested_procedure_id = f"RQ{appointment.id:08d}"
+            appointment.scheduled_procedure_step_id = f"SP{appointment.id:08d}"
+        
         # Update appointment status to indicate MWL is ready
-        # The MWL server will query appointments with status 'Waiting', 'In-Room', or 'In-Scan'
         old_status = appointment.status
         if appointment.status not in ['Waiting', 'In-Room', 'In-Scan']:
             appointment.status = 'Waiting'
         
         db.session.commit()
-        
+        from app.utils.audit import log_audit
+        log_audit('appointment', 'send_mwl', user_id=current_user.id, entity_id=str(appointment_id), details={'accession_number': appointment.accession_number})
         logger.info(
-            f"MWL sent for appointment {appointment_id} (patient: {patient.id}) "
+            f"MWL sent for appointment {appointment_id} (patient: {patient.id}, accession={appointment.accession_number}) "
             f"by user {current_user.username}"
         )
         
@@ -531,6 +537,9 @@ def send_mwl_for_appointment(appointment_id):
                 'appointment_id': appointment.id,
                 'patient_id': appointment.patient_id,
                 'patient_name': f"{patient.first_name} {patient.last_name}",
+                'accession_number': appointment.accession_number,
+                'requested_procedure_id': appointment.requested_procedure_id,
+                'scheduled_procedure_step_id': appointment.scheduled_procedure_step_id,
                 'date': appointment.date.isoformat(),
                 'time': appointment.time,
                 'department': appointment.department,

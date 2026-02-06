@@ -2,6 +2,7 @@ from app.extensions import db
 from .base import TimestampMixin
 from datetime import datetime
 
+
 class Appointment(db.Model, TimestampMixin):
     __tablename__ = 'appointments'
 
@@ -17,6 +18,14 @@ class Appointment(db.Model, TimestampMixin):
     # Status from PDF + frontend: Waiting → In-Room → In-Scan → Review → Completed
     status = db.Column(db.String(30), default='Waiting')
     # Possible values: Waiting, In-Room, In-Scan, With Doctor, With Technician, Review, Completed
+
+    # --- PDF spec: DICOM MWL & matching (immutable once set) ---
+    accession_number = db.Column(db.String(64), unique=True, nullable=True, index=True)  # Study matching key
+    requested_procedure_id = db.Column(db.String(64), nullable=True, index=True)  # Exam request identifier
+    scheduled_procedure_step_id = db.Column(db.String(64), nullable=True, index=True)  # Visit identifier
+
+    # Soft delete (no hard deletion of medical data)
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True)
 
     def __repr__(self):
         return f"<Appointment {self.patient_id} - {self.doctor} on {self.date} {self.time}>"

@@ -9,6 +9,51 @@ from datetime import datetime
 patient_bp = Blueprint('patient', __name__, url_prefix='/api/patients')
 
 
+def _empty_to_na(val):
+    """Return 'N/A' for None or empty string; otherwise return value."""
+    if val is None:
+        return "N/A"
+    if isinstance(val, str) and not val.strip():
+        return "N/A"
+    return val
+
+
+def _patient_to_dict(p):
+    """Build patient dict with empty fields as 'N/A'."""
+    return {
+        'id': p.id,
+        'title': _empty_to_na(p.title),
+        'first_name': p.first_name or "N/A",
+        'last_name': p.last_name or "N/A",
+        'maiden_name': _empty_to_na(p.maiden_name),
+        'gender': _empty_to_na(p.gender),
+        'birth_date': p.birth_date.isoformat() if p.birth_date else "N/A",
+        'phone': p.phone or "N/A",
+        'secondary_phone': _empty_to_na(p.secondary_phone),
+        'other_phone': _empty_to_na(p.other_phone),
+        'email': _empty_to_na(p.email),
+        'identity_number': _empty_to_na(p.identity_number),
+        'social_security_number': _empty_to_na(p.social_security_number),
+        'occupation': _empty_to_na(p.occupation),
+        'height': _empty_to_na(p.height) if p.height is None else p.height,
+        'weight': _empty_to_na(p.weight) if p.weight is None else p.weight,
+        'blood_group': _empty_to_na(p.blood_group),
+        'smoker': _empty_to_na(p.smoker),
+        'cigarettes_per_day': _empty_to_na(p.cigarettes_per_day) if p.cigarettes_per_day is None else p.cigarettes_per_day,
+        'family_history': _empty_to_na(p.family_history),
+        'medical_history': _empty_to_na(p.medical_history),
+        'gynecological_history': _empty_to_na(p.gynecological_history),
+        'allergies': _empty_to_na(p.allergies),
+        'notes': _empty_to_na(p.notes),
+        'primary_doctor': _empty_to_na(p.primary_doctor),
+        'delivery_location': _empty_to_na(p.delivery_location),
+        'legacy_number': _empty_to_na(p.legacy_number),
+        'new_patient': p.new_patient if p.new_patient is not None else True,
+        'created_at': p.created_at.isoformat() if p.created_at else "N/A",
+        'updated_at': p.updated_at.isoformat() if p.updated_at else "N/A",
+    }
+
+
 def parse_date(date_string):
     """Parse date string to date object"""
     if not date_string:
@@ -40,8 +85,8 @@ def list_patients():
     if limit < 1 or limit > 100:
         limit = 20
     
-    # Step 3: Start building query
-    query = Patient.query
+    # Step 3: Start building query (exclude soft-deleted - PDF spec §9)
+    query = Patient.query.filter(Patient.deleted_at.is_(None))
     
     # Step 4: Apply search filter if provided
     if search:
@@ -64,41 +109,10 @@ def list_patients():
         error_out=False
     )
     
-    # Step 7: Format response (FULL patient info per item)
+    # Step 7: Format response (full patient info; empty fields as N/A)
     return jsonify({
         'success': True,
-        'data': [{
-            'id': p.id,
-            'title': p.title,
-            'first_name': p.first_name,
-            'last_name': p.last_name,
-            'maiden_name': p.maiden_name,
-            'gender': p.gender,
-            'birth_date': p.birth_date.isoformat() if p.birth_date else None,
-            'phone': p.phone,
-            'secondary_phone': p.secondary_phone,
-            'other_phone': p.other_phone,
-            'email': p.email,
-            'identity_number': p.identity_number,
-            'social_security_number': p.social_security_number,
-            'occupation': p.occupation,
-            'height': p.height,
-            'weight': p.weight,
-            'blood_group': p.blood_group,
-            'smoker': p.smoker,
-            'cigarettes_per_day': p.cigarettes_per_day,
-            'family_history': p.family_history,
-            'medical_history': p.medical_history,
-            'gynecological_history': p.gynecological_history,
-            'allergies': p.allergies,
-            'notes': p.notes,
-            'primary_doctor': p.primary_doctor,
-            'delivery_location': p.delivery_location,
-            'legacy_number': p.legacy_number,
-            'new_patient': p.new_patient,
-            'created_at': p.created_at.isoformat(),
-            'updated_at': p.updated_at.isoformat() if p.updated_at else None
-        } for p in patients.items],
+        'data': [_patient_to_dict(p) for p in patients.items],
         'pagination': {
             'page': page,
             'limit': limit,
@@ -116,8 +130,8 @@ def get_patient(patient_id):
     """
     Get single patient by ID
     """
-    # Step 1: Find patient by ID
-    patient = Patient.query.filter_by(id=patient_id).first()
+    # Step 1: Find patient by ID (exclude soft-deleted)
+    patient = Patient.query.filter_by(id=patient_id).filter(Patient.deleted_at.is_(None)).first()
     
     # Step 2: Check if patient exists
     if not patient:
@@ -126,41 +140,10 @@ def get_patient(patient_id):
             'error': 'Patient not found'
         }), 404
     
-    # Step 3: Return patient data
+    # Step 3: Return patient data (empty fields as N/A)
     return jsonify({
         'success': True,
-        'data': {
-            'id': patient.id,
-            'title': patient.title,
-            'first_name': patient.first_name,
-            'last_name': patient.last_name,
-            'maiden_name': patient.maiden_name,
-            'gender': patient.gender,
-            'birth_date': patient.birth_date.isoformat() if patient.birth_date else None,
-            'phone': patient.phone,
-            'secondary_phone': patient.secondary_phone,
-            'other_phone': patient.other_phone,
-            'email': patient.email,
-            'identity_number': patient.identity_number,
-            'social_security_number': patient.social_security_number,
-            'occupation': patient.occupation,
-            'height': patient.height,
-            'weight': patient.weight,
-            'blood_group': patient.blood_group,
-            'smoker': patient.smoker,
-            'cigarettes_per_day': patient.cigarettes_per_day,
-            'family_history': patient.family_history,
-            'medical_history': patient.medical_history,
-            'gynecological_history': patient.gynecological_history,
-            'allergies': patient.allergies,
-            'notes': patient.notes,
-            'primary_doctor': patient.primary_doctor,
-            'delivery_location': patient.delivery_location,
-            'legacy_number': patient.legacy_number,
-            'new_patient': patient.new_patient,
-            'created_at': patient.created_at.isoformat(),
-            'updated_at': patient.updated_at.isoformat()
-        }
+        'data': _patient_to_dict(patient)
     }), 200
 
 
@@ -270,19 +253,10 @@ def create_patient():
         db.session.add(patient)
         db.session.commit()
         
-        # Step 7: Return created patient
+        # Step 7: Return created patient (full info; empty fields as N/A)
         return jsonify({
             'success': True,
-            'data': {
-                'id': patient.id,
-                'first_name': patient.first_name,
-                'last_name': patient.last_name,
-                'phone': patient.phone,
-                'email': patient.email,
-                'gender': patient.gender,
-                'birth_date': patient.birth_date.isoformat() if patient.birth_date else None,
-                'created_at': patient.created_at.isoformat()
-            },
+            'data': _patient_to_dict(patient),
             'message': 'Patient created successfully'
         }), 201
         
@@ -302,8 +276,8 @@ def update_patient(patient_id):
     Update patient information
     Access: receptionist, doctor
     """
-    # Step 1: Find patient
-    patient = Patient.query.filter_by(id=patient_id).first()
+    # Step 1: Find patient (exclude soft-deleted)
+    patient = Patient.query.filter_by(id=patient_id).filter(Patient.deleted_at.is_(None)).first()
     if not patient:
         return jsonify({
             'success': False,
@@ -397,41 +371,10 @@ def update_patient(patient_id):
         # Update timestamp is automatic (TimestampMixin handles it)
         db.session.commit()
         
-        # Step 4: Return updated patient
+        # Step 4: Return updated patient (empty fields as N/A)
         return jsonify({
             'success': True,
-            'data': {
-                'id': patient.id,
-                'title': patient.title,
-                'first_name': patient.first_name,
-                'last_name': patient.last_name,
-                'maiden_name': patient.maiden_name,
-                'gender': patient.gender,
-                'birth_date': patient.birth_date.isoformat() if patient.birth_date else None,
-                'phone': patient.phone,
-                'secondary_phone': patient.secondary_phone,
-                'other_phone': patient.other_phone,
-                'email': patient.email,
-                'identity_number': patient.identity_number,
-                'social_security_number': patient.social_security_number,
-                'occupation': patient.occupation,
-                'height': patient.height,
-                'weight': patient.weight,
-                'blood_group': patient.blood_group,
-                'smoker': patient.smoker,
-                'cigarettes_per_day': patient.cigarettes_per_day,
-                'family_history': patient.family_history,
-                'medical_history': patient.medical_history,
-                'gynecological_history': patient.gynecological_history,
-                'allergies': patient.allergies,
-                'notes': patient.notes,
-                'primary_doctor': patient.primary_doctor,
-                'delivery_location': patient.delivery_location,
-                'legacy_number': patient.legacy_number,
-                'new_patient': patient.new_patient,
-                'created_at': patient.created_at.isoformat(),
-                'updated_at': patient.updated_at.isoformat()
-            },
+            'data': _patient_to_dict(patient),
             'message': 'Patient updated successfully'
         }), 200
         
@@ -448,36 +391,23 @@ def update_patient(patient_id):
 @require_role('receptionist', 'doctor')
 def delete_patient(patient_id):
     """
-    Delete patient
+    Soft-delete patient (PDF spec §9: no hard deletion of medical data).
     Access: receptionist, doctor
-    Note: This is hard delete. Checks for appointments before deletion.
     """
-    # Step 1: Find patient
-    patient = Patient.query.filter_by(id=patient_id).first()
+    from datetime import datetime as dt
+    patient = Patient.query.filter_by(id=patient_id).filter(Patient.deleted_at.is_(None)).first()
     if not patient:
         return jsonify({
             'success': False,
             'error': 'Patient not found'
         }), 404
-    
-    # Step 2: Check if patient has appointments
-    appointments_count = Appointment.query.filter_by(patient_id=patient_id).count()
-    if appointments_count > 0:
-        return jsonify({
-            'success': False,
-            'error': f'Cannot delete patient. Patient has {appointments_count} appointment(s).'
-        }), 400
-    
-    # Step 3: Delete patient
     try:
-        db.session.delete(patient)
+        patient.deleted_at = dt.utcnow()
         db.session.commit()
-        
         return jsonify({
             'success': True,
             'message': f'Patient {patient_id} deleted successfully'
         }), 200
-        
     except Exception as e:
         db.session.rollback()
         return jsonify({
@@ -490,7 +420,7 @@ def delete_patient(patient_id):
 @jwt_required()
 def search_patients():
     """
-    Search patients by name, phone, or ID
+    Search patients by name, phone, email, or ID
     Query param: q (search query)
     """
     # Step 1: Get search query
@@ -502,7 +432,8 @@ def search_patients():
             'error': 'Search query "q" parameter is required'
         }), 400
     
-    # Step 2: Build search query
+    # Step 2: Build search query (case-insensitive, partial match)
+    # Search in: first_name, last_name, phone, email, patient ID
     search_filter = or_(
         Patient.first_name.ilike(f'%{query}%'),
         Patient.last_name.ilike(f'%{query}%'),
@@ -511,20 +442,15 @@ def search_patients():
         Patient.id.ilike(f'%{query}%')
     )
     
-    # Step 3: Execute search
-    patients = Patient.query.filter(search_filter).limit(50).all()
+    # Step 3: Execute search (exclude soft-deleted only)
+    patients = Patient.query.filter(
+        Patient.deleted_at.is_(None)
+    ).filter(search_filter).limit(50).all()
     
-    # Step 4: Format response
+    # Step 4: Format response (full patient info; empty fields as N/A)
     return jsonify({
         'success': True,
-        'data': [{
-            'id': p.id,
-            'first_name': p.first_name,
-            'last_name': p.last_name,
-            'phone': p.phone,
-            'email': p.email,
-            'gender': p.gender,
-            'birth_date': p.birth_date.isoformat() if p.birth_date else None
-        } for p in patients],
-        'count': len(patients)
+        'data': [_patient_to_dict(p) for p in patients],
+        'count': len(patients),
+        'query': query  # Include query for debugging
     }), 200

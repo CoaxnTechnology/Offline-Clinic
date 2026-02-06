@@ -181,29 +181,43 @@ def list_reports(
 
 def delete_report(report_id: int) -> bool:
     """
-    Delete a report and its PDF file
-    
-    Args:
-        report_id: Report ID
-    
-    Returns:
-        bool: True if deleted, False if not found
+    Delete a report and its PDF file.
+    PDF spec §6: Only draft reports can be deleted; no modification after validation.
     """
     report = Report.query.get(report_id)
     if not report:
         return False
-    
-    # Delete PDF file if exists
+    if report.lifecycle_state not in (None, 'draft'):
+        logger.warning(f"Cannot delete report {report_id}: lifecycle_state={report.lifecycle_state}")
+        return False
+
     if report.file_path and os.path.exists(report.file_path):
         try:
             os.remove(report.file_path)
             logger.info(f"Deleted report PDF file: {report.file_path}")
         except Exception as e:
             logger.error(f"Failed to delete report PDF file: {e}")
-    
-    # Delete database record
+
     db.session.delete(report)
     db.session.commit()
-    
     logger.info(f"Deleted report: {report_id}")
     return True
+
+
+def validate_report(report_id: int, user_id: int) -> Optional[Report]:
+    """
+    Validate a report (PDF spec §6: Draft → Validated; no modification after).
+    """
+    from app.utils.audit import log_audit
+    report = Report.query.get(report_id)
+    if not report:
+        return None
+    if report.lifecycle_state not in (None, 'draft'):
+        return None
+    report.lifecycle_state = 'validated'
+    report.validated_at = datetime.utcnow()
+    report.validated_by = user_id
+    db.session.commit()
+    log_audit('report', 'validate', user_id=user_id, entity_id=str(report_id), details={'report_number': report.report_number})
+    logger.info(f"Report {report_id} validated by user {user_id}")
+    return report

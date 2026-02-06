@@ -29,8 +29,8 @@ def list_appointments():
     if limit < 1 or limit > 100:
         limit = 20
     
-    # Step 3: Start building query
-    query = Appointment.query
+    # Step 3: Start building query (exclude soft-deleted - PDF spec §9)
+    query = Appointment.query.filter(Appointment.deleted_at.is_(None))
     
     # Step 4: Apply filters
     if filter_date:
@@ -79,6 +79,9 @@ def list_appointments():
             'date': apt.date.isoformat() if apt.date else None,
             'time': apt.time,
             'status': apt.status,
+            'accession_number': apt.accession_number,
+            'requested_procedure_id': apt.requested_procedure_id,
+            'scheduled_procedure_step_id': apt.scheduled_procedure_step_id,
             'created_at': apt.created_at.isoformat()
         })
     
@@ -102,8 +105,11 @@ def get_appointment(appointment_id):
     """
     Get single appointment by ID
     """
-    # Step 1: Find appointment by ID
-    appointment = Appointment.query.get(appointment_id)
+    # Step 1: Find appointment by ID (exclude soft-deleted)
+    appointment = Appointment.query.filter(
+        Appointment.id == appointment_id,
+        Appointment.deleted_at.is_(None)
+    ).first()
     
     # Step 2: Check if appointment exists
     if not appointment:
@@ -131,6 +137,9 @@ def get_appointment(appointment_id):
             'date': appointment.date.isoformat() if appointment.date else None,
             'time': appointment.time,
             'status': appointment.status,
+            'accession_number': appointment.accession_number,
+            'requested_procedure_id': appointment.requested_procedure_id,
+            'scheduled_procedure_step_id': appointment.scheduled_procedure_step_id,
             'created_at': appointment.created_at.isoformat(),
             'updated_at': appointment.updated_at.isoformat()
         }
@@ -163,8 +172,8 @@ def create_appointment():
                 'error': f'Field "{field}" is required'
             }), 400
     
-    # Step 3: Check if patient exists
-    patient = Patient.query.get(data['patient_id'])
+    # Step 3: Check if patient exists and is not deleted
+    patient = Patient.query.filter_by(id=data['patient_id']).filter(Patient.deleted_at.is_(None)).first()
     if not patient:
         return jsonify({
             'success': False,
@@ -428,36 +437,34 @@ def update_appointment_status(appointment_id):
 @require_role('receptionist', 'doctor')
 def delete_appointment(appointment_id):
     """
-    Delete appointment
+    Soft-delete appointment (PDF spec §9: no hard deletion of medical data).
     Access: receptionist, doctor
     """
-    # Step 1: Find appointment
-    appointment = Appointment.query.get(appointment_id)
+    from datetime import datetime as dt
+    appointment = Appointment.query.filter(
+        Appointment.id == appointment_id,
+        Appointment.deleted_at.is_(None)
+    ).first()
     if not appointment:
         return jsonify({
             'success': False,
             'error': 'Appointment not found'
         }), 404
     
-    # Step 2: Store info for response
     appointment_info = {
         'id': appointment.id,
         'patient_id': appointment.patient_id,
         'date': appointment.date.isoformat() if appointment.date else None,
         'time': appointment.time
     }
-    
-    # Step 3: Delete appointment
     try:
-        db.session.delete(appointment)
+        appointment.deleted_at = dt.utcnow()
         db.session.commit()
-        
         return jsonify({
             'success': True,
             'message': f'Appointment {appointment_id} deleted successfully',
             'data': appointment_info
         }), 200
-        
     except Exception as e:
         db.session.rollback()
         return jsonify({

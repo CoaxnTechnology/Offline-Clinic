@@ -63,9 +63,11 @@ def handle_mwl_find(event):
     logger.info(f"MWL query from {caller_ae} - Date: {query_date}, Modality: {modality}")
 
     try:
-        # Query appointments that have MWL sent flag
+        # Query appointments published to MWL (have accession_number) and not deleted
         query = Appointment.query.filter(
-            Appointment.status.in_(['Waiting', 'In-Room', 'In-Scan'])
+            Appointment.status.in_(['Waiting', 'In-Room', 'In-Scan']),
+            Appointment.accession_number.isnot(None),
+            Appointment.deleted_at.is_(None),
         )
         
         # Filter by date if provided
@@ -85,24 +87,25 @@ def handle_mwl_find(event):
             # For now, only return US (Ultrasound) studies
             appointments = []
         
-        # Generate MWL datasets for each appointment
+        # Generate MWL datasets for each appointment (PDF spec §4)
         for appointment in appointments:
             patient = Patient.query.get(appointment.patient_id)
-            if not patient:
+            if not patient or patient.deleted_at:
                 continue
-            
-            # Create MWL dataset
+            birth_str = patient.birth_date.strftime('%Y%m%d') if getattr(patient, 'birth_date', None) and patient.birth_date else ''
             ds = create_mwl_dataset(
                 patient_id=patient.id,
                 patient_name=f"{patient.first_name} {patient.last_name}",
-                patient_sex=patient.gender or 'M',
-                accession_number=f"ACC{appointment.id:06d}",
-                study_description=appointment.department or 'Ultrasound',
+                patient_sex=(patient.gender or 'M')[:1],
+                accession_number=appointment.accession_number,
+                study_description=appointment.department or 'OB/GYN Ultrasound',
                 scheduled_date=appointment.date.strftime('%Y%m%d'),
-                scheduled_time=appointment.time.replace(':', '')[:4] if appointment.time else '0900',
-                modality='US'
+                scheduled_time=(appointment.time or '').replace(':', '')[:4] or '0900',
+                modality='US',
+                patient_birth_date=birth_str,
+                requested_procedure_id=appointment.requested_procedure_id or '',
+                scheduled_procedure_step_id=appointment.scheduled_procedure_step_id or '',
             )
-            
             yield 0xFF00, ds
         
         yield 0x0000, None

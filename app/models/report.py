@@ -37,7 +37,13 @@ class Report(db.Model, TimestampMixin):
     # Status
     status = db.Column(db.String(20), default='completed', nullable=False)  # completed, generating, failed
     generation_task_id = db.Column(db.String(100))  # Celery task ID if async
-    
+
+    # Report lifecycle (PDF spec §6): Draft → Validated → Archived; no modification after validation
+    lifecycle_state = db.Column(db.String(20), default='draft', nullable=False, index=True)  # draft, validated, archived
+    validated_at = db.Column(db.DateTime, nullable=True)
+    validated_by = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True, index=True)
+    accession_number = db.Column(db.String(64), nullable=True, index=True)  # Copy from order for PDF header
+
     # Metadata
     image_count = db.Column(db.Integer, default=0)
     generated_by = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
@@ -45,7 +51,8 @@ class Report(db.Model, TimestampMixin):
     
     # Relationships
     patient = db.relationship('Patient', backref='reports', lazy=True)
-    generator = db.relationship('Admin', backref='generated_reports', lazy=True)
+    generator = db.relationship('Admin', foreign_keys=[generated_by], backref='generated_reports', lazy=True)
+    validator = db.relationship('Admin', foreign_keys=[validated_by], lazy=True)
     
     def to_dict(self):
         """Convert report to dictionary"""
@@ -60,6 +67,10 @@ class Report(db.Model, TimestampMixin):
             'file_path': self.file_path,
             'file_size': self.file_size,
             'status': self.status,
+            'lifecycle_state': self.lifecycle_state,
+            'validated_at': self.validated_at.isoformat() if self.validated_at else None,
+            'validated_by': self.validated_by,
+            'accession_number': self.accession_number,
             'image_count': self.image_count,
             'generated_by': self.generated_by,
             'notes': self.notes,

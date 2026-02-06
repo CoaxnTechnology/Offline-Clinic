@@ -45,6 +45,9 @@ class Patient(db.Model, TimestampMixin):
     # Demographics (free-form or JSON for future extensions)
     demographics = db.Column(db.Text)
 
+    # Soft delete (no hard deletion of medical data - PDF spec §9)
+    deleted_at = db.Column(db.DateTime, nullable=True, index=True)
+
     # Relationships
     appointments = db.relationship('Appointment', backref='patient', lazy='dynamic')
     
@@ -54,20 +57,27 @@ class Patient(db.Model, TimestampMixin):
     @classmethod
     def generate_new_id(cls):
         """
-        Generate next patient ID like PAT001, PAT002...
-        Uses the numeric suffix of the latest existing ID.
+        Generate next patient ID like PAT001, PAT002, PAT003...
+        Always uses PAT prefix with 3-digit zero-padded number.
+        Finds the highest existing number to avoid gaps.
         """
-        # Get the most recently created patient
-        last_patient = cls.query.order_by(cls.created_at.desc()).first()
-        if not last_patient or not last_patient.id:
+        # Get all patient IDs that start with PAT
+        all_patients = cls.query.filter(cls.id.like('PAT%')).all()
+        
+        if not all_patients:
             return "PAT001"
-
-        # Extract trailing digits from last ID
-        match = re.search(r'(\d+)$', last_patient.id)
-        if not match:
-            # Fallback if existing IDs don't match pattern
-            return "PAT001"
-
-        number = int(match.group(1)) + 1
-        prefix = last_patient.id[:-len(match.group(1))] or "PAT"
-        return f"{prefix}{number:03d}"
+        
+        # Extract all numeric suffixes and find the maximum
+        max_number = 0
+        for patient in all_patients:
+            match = re.search(r'PAT(\d+)$', patient.id)
+            if match:
+                try:
+                    num = int(match.group(1))
+                    max_number = max(max_number, num)
+                except ValueError:
+                    continue
+        
+        # Generate next ID with 3-digit padding
+        next_number = max_number + 1
+        return f"PAT{next_number:03d}"

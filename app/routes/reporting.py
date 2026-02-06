@@ -371,25 +371,52 @@ def get_report_status(report_id):
 @jwt_required()
 @require_role('doctor', 'receptionist')
 def delete_report_endpoint(report_id):
-    """Delete a report and its PDF file"""
+    """Delete a report and its PDF file. PDF spec §6: only draft reports can be deleted."""
+    from app.models import Report
     try:
-        success = delete_report(report_id)
-        if not success:
+        report = Report.query.get(report_id)
+        if not report:
+            return jsonify({'success': False, 'error': 'Report not found'}), 404
+        if report.lifecycle_state in ('validated', 'archived'):
             return jsonify({
                 'success': False,
-                'error': 'Report not found'
-            }), 404
-        
-        return jsonify({
-            'success': True,
-            'message': 'Report deleted successfully'
-        })
-    
+                'error': 'Report is validated or archived and cannot be deleted (PDF spec §6)'
+            }), 403
+        success = delete_report(report_id)
+        if not success:
+            return jsonify({'success': False, 'error': 'Report not found'}), 404
+        return jsonify({'success': True, 'message': 'Report deleted successfully'})
     except Exception as e:
         logger.error(f"Error deleting report {report_id}: {e}", exc_info=True)
         db.session.rollback()
         error_msg = 'Failed to delete report' if not current_app.debug else str(e)
+        return jsonify({'success': False, 'error': error_msg}), 500
+
+
+@reporting_bp.route('/<int:report_id>/validate', methods=['POST'])
+@jwt_required()
+@require_role('doctor')
+def validate_report_endpoint(report_id):
+    """Validate a report (PDF spec §6: Draft → Validated; no modification after)."""
+    from app.models import Report
+    from app.services.report_service import validate_report
+    try:
+        user_id = int(get_jwt_identity())
+        report = validate_report(report_id, user_id)
+        if not report:
+            r = Report.query.get(report_id)
+            if not r:
+                return jsonify({'success': False, 'error': 'Report not found'}), 404
+            return jsonify({
+                'success': False,
+                'error': 'Report is already validated or archived'
+            }), 400
         return jsonify({
-            'success': False,
-            'error': error_msg
-        }), 500
+            'success': True,
+            'message': 'Report validated',
+            'data': report.to_dict()
+        })
+    except Exception as e:
+        logger.error(f"Error validating report {report_id}: {e}", exc_info=True)
+        db.session.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500

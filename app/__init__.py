@@ -151,10 +151,10 @@ def create_app(config_name=None):
 
     # Import models to register them with SQLAlchemy
     with app.app_context():
-        from .models import Patient, Appointment, Admin, DicomImage, DicomMeasurement  # This is essential
+        from .models import Patient, Appointment, Admin, DicomImage, DicomMeasurement, Prescription  # This is essential
         
         # Register blueprints
-        from .routes import auth_bp, patient_bp, appointment_bp, admin_bp, dicom_bp, health_bp, reporting_bp
+        from .routes import auth_bp, patient_bp, appointment_bp, admin_bp, dicom_bp, health_bp, reporting_bp, prescription_bp
         from .routes.super_admin import super_admin_bp
         app.register_blueprint(health_bp)  # Register health check first
         app.register_blueprint(auth_bp)
@@ -164,6 +164,7 @@ def create_app(config_name=None):
         app.register_blueprint(admin_bp, url_prefix='/api/receptionists', name='receptionist')  # Alias
         app.register_blueprint(dicom_bp)
         app.register_blueprint(reporting_bp)
+        app.register_blueprint(prescription_bp)
         app.register_blueprint(super_admin_bp)
         
         # Auto-start DICOM servers if enabled (default: True)

@@ -235,44 +235,46 @@ def save_dicom_file(ds: Dataset, storage_path: str, sop_instance_uid: str) -> st
         raise
 
 
-def create_mwl_dataset(patient_id: str, patient_name: str, patient_sex: str,
-                        accession_number: str, study_description: str,
-                        scheduled_date: str, scheduled_time: str,
-                        modality: str = 'US') -> Dataset:
+def create_mwl_dataset(
+    patient_id: str,
+    patient_name: str,
+    patient_sex: str,
+    accession_number: str,
+    study_description: str,
+    scheduled_date: str,
+    scheduled_time: str,
+    modality: str = "US",
+    patient_birth_date: str = "",
+    requested_procedure_id: str = "",
+    scheduled_procedure_step_id: str = "",
+) -> Dataset:
     """
-    Create Modality Worklist (MWL) dataset for sending to DICOM device
-    
-    Args:
-        patient_id: Patient ID
-        patient_name: Patient name
-        patient_sex: Patient sex (M/F)
-        accession_number: Accession number
-        study_description: Study description
-        scheduled_date: Scheduled date (YYYYMMDD)
-        scheduled_time: Scheduled time (HHMM)
-        modality: Modality (default: US)
-    
-    Returns:
-        Pydicom Dataset for MWL
+    Create Modality Worklist (MWL) dataset per PDF spec §4.
+    Required: PatientName, PatientID, PatientBirthDate, PatientSex, AccessionNumber,
+    RequestedProcedureID, ScheduledProcedureStepID, StudyDescription.
     """
     ds = Dataset()
-    
-    # Patient Information
+
+    # Patient Information (mandatory MWL fields)
     ds.PatientName = patient_name
     ds.PatientID = patient_id
-    ds.PatientBirthDate = ''
+    ds.PatientBirthDate = patient_birth_date[:8] if patient_birth_date and len(patient_birth_date) >= 8 else (patient_birth_date or "")
     ds.PatientSex = patient_sex
     ds.AccessionNumber = accession_number
     ds.RequestedProcedureDescription = study_description
     ds.StudyInstanceUID = generate_uid()
-    
+    if requested_procedure_id:
+        ds.RequestedProcedureID = requested_procedure_id
+
     # Scheduled Procedure Step Sequence
     ds.ScheduledProcedureStepSequence = [Dataset()]
     sps_item = ds.ScheduledProcedureStepSequence[0]
     sps_item.ScheduledProcedureStepDescription = study_description
     sps_item.ScheduledProcedureStepStartDate = scheduled_date[:8] if len(scheduled_date) >= 8 else scheduled_date
-    sps_item.ScheduledProcedureStepStartTime = scheduled_time if len(scheduled_time) >= 4 else '0900'
+    sps_item.ScheduledProcedureStepStartTime = scheduled_time if len(scheduled_time) >= 4 else "0900"
     sps_item.Modality = modality
-    sps_item.ScheduledPerformingPhysicianName = ''
-    
+    sps_item.ScheduledPerformingPhysicianName = ""
+    if scheduled_procedure_step_id:
+        sps_item.ScheduledProcedureStepID = scheduled_procedure_step_id
+
     return ds
