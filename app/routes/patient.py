@@ -514,17 +514,43 @@ def search_patients():
     # Step 3: Execute search
     patients = Patient.query.filter(search_filter).limit(50).all()
     
-    # Step 4: Format response
-    return jsonify({
-        'success': True,
-        'data': [{
+    # Step 4: Format response (full patient info)
+    def patient_to_full_dict(p):
+        return {
             'id': p.id,
+            'title': p.title,
             'first_name': p.first_name,
             'last_name': p.last_name,
-            'phone': p.phone,
-            'email': p.email,
+            'maiden_name': p.maiden_name,
             'gender': p.gender,
-            'birth_date': p.birth_date.isoformat() if p.birth_date else None
-        } for p in patients],
+            'birth_date': p.birth_date.isoformat() if p.birth_date else None,
+            'phone': p.phone,
+            'secondary_phone': p.secondary_phone,
+            'other_phone': p.other_phone,
+            'email': p.email,
+            'identity_number': p.identity_number,
+            'social_security_number': p.social_security_number,
+            'occupation': p.occupation,
+            'height': p.height,
+            'weight': p.weight,
+            'blood_group': p.blood_group,
+            'smoker': p.smoker,
+            'cigarettes_per_day': p.cigarettes_per_day,
+            'family_history': p.family_history,
+            'medical_history': p.medical_history,
+            'gynecological_history': p.gynecological_history,
+            'allergies': p.allergies,
+            'notes': p.notes,
+            'primary_doctor': p.primary_doctor,
+            'delivery_location': p.delivery_location,
+            'legacy_number': p.legacy_number,
+            'new_patient': p.new_patient,
+            'created_at': p.created_at.isoformat(),
+            'updated_at': p.updated_at.isoformat() if p.updated_at else None
+        }
+
+    return jsonify({
+        'success': True,
+        'data': [patient_to_full_dict(p) for p in patients],
         'count': len(patients)
     }), 200
