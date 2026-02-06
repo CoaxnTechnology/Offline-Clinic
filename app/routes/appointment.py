@@ -4,6 +4,7 @@ from app.models import Appointment, Patient
 from app.extensions import db
 from app.utils.decorators import require_role
 from datetime import datetime, date
+from app.routes.patient import _patient_to_dict  # Reuse full patient formatter
 
 appointment_bp = Blueprint('appointment', __name__, url_prefix='/api/appointments')
 
@@ -12,8 +13,10 @@ appointment_bp = Blueprint('appointment', __name__, url_prefix='/api/appointment
 @jwt_required()
 def list_appointments():
     """
-    List all appointments with filters and pagination
-    Query params: date, patient_id, doctor, status, page, limit
+    List appointments for a given date (default: today) with filters and pagination.
+    Query params:
+        date: YYYY-MM-DD (optional, defaults to today's date)
+        patient_id, doctor, status, page, limit
     """
     # Step 1: Get query parameters
     page = request.args.get('page', 1, type=int)
@@ -32,17 +35,20 @@ def list_appointments():
     # Step 3: Start building query (exclude soft-deleted - PDF spec §9)
     query = Appointment.query.filter(Appointment.deleted_at.is_(None))
     
-    # Step 4: Apply filters
-    if filter_date:
-        try:
-            # Parse date string to date object
+    # Step 4: Apply date filter (default: today)
+    try:
+        if filter_date:
+            # Parse provided date
             filter_date_obj = datetime.strptime(filter_date, '%Y-%m-%d').date()
-            query = query.filter(Appointment.date == filter_date_obj)
-        except ValueError:
-            return jsonify({
-                'success': False,
-                'error': 'Invalid date format. Use YYYY-MM-DD'
-            }), 400
+        else:
+            # Default to today's date
+            filter_date_obj = date.today()
+        query = query.filter(Appointment.date == filter_date_obj)
+    except ValueError:
+        return jsonify({
+            'success': False,
+            'error': 'Invalid date format. Use YYYY-MM-DD'
+        }), 400
     
     if patient_id:
         query = query.filter(Appointment.patient_id == patient_id)
@@ -66,7 +72,7 @@ def list_appointments():
         error_out=False
     )
     
-    # Step 7: Format response with patient info
+    # Step 7: Format response with patient info (basic details for list)
     result = []
     for apt in appointments.items:
         patient = Patient.query.get(apt.patient_id)
@@ -75,7 +81,6 @@ def list_appointments():
             'patient_id': apt.patient_id,
             'patient_name': f"{patient.first_name} {patient.last_name}" if patient else "Unknown",
             'doctor': apt.doctor,
-            'department': apt.department,
             'date': apt.date.isoformat() if apt.date else None,
             'time': apt.time,
             'status': apt.status,
@@ -95,54 +100,8 @@ def list_appointments():
             'pages': appointments.pages,
             'has_next': appointments.has_next,
             'has_prev': appointments.has_prev
-        }
-    }), 200
-
-
-@appointment_bp.route('/<int:appointment_id>', methods=['GET'])
-@jwt_required()
-def get_appointment(appointment_id):
-    """
-    Get single appointment by ID
-    """
-    # Step 1: Find appointment by ID (exclude soft-deleted)
-    appointment = Appointment.query.filter(
-        Appointment.id == appointment_id,
-        Appointment.deleted_at.is_(None)
-    ).first()
-    
-    # Step 2: Check if appointment exists
-    if not appointment:
-        return jsonify({
-            'success': False,
-            'error': 'Appointment not found'
-        }), 404
-    
-    # Step 3: Get patient info
-    patient = Patient.query.get(appointment.patient_id)
-    
-    # Step 4: Return appointment data
-    return jsonify({
-        'success': True,
-        'data': {
-            'id': appointment.id,
-            'patient_id': appointment.patient_id,
-            'patient': {
-                'id': patient.id if patient else None,
-                'name': f"{patient.first_name} {patient.last_name}" if patient else "Unknown",
-                'phone': patient.phone if patient else None
-            },
-            'doctor': appointment.doctor,
-            'department': appointment.department,
-            'date': appointment.date.isoformat() if appointment.date else None,
-            'time': appointment.time,
-            'status': appointment.status,
-            'accession_number': appointment.accession_number,
-            'requested_procedure_id': appointment.requested_procedure_id,
-            'scheduled_procedure_step_id': appointment.scheduled_procedure_step_id,
-            'created_at': appointment.created_at.isoformat(),
-            'updated_at': appointment.updated_at.isoformat()
-        }
+        },
+        'date': filter_date_obj.isoformat()
     }), 200
 
 
@@ -248,7 +207,6 @@ def create_appointment():
         appointment = Appointment(
             patient_id=data['patient_id'],
             doctor=doctor_name,
-            department=data.get('department'),
             date=appointment_date,
             time=data['time'],
             status=data.get('status', 'Waiting')  # Default status
@@ -265,7 +223,6 @@ def create_appointment():
                 'patient_id': appointment.patient_id,
                 'patient_name': f"{patient.first_name} {patient.last_name}",
                 'doctor': appointment.doctor,
-                'department': appointment.department,
                 'date': appointment.date.isoformat(),
                 'time': appointment.time,
                 'status': appointment.status,
@@ -308,8 +265,8 @@ def update_appointment(appointment_id):
     
     # Step 3: Update fields
     try:
-        # List of updatable fields
-        updatable_fields = ['doctor', 'department', 'date', 'time']
+        # List of updatable fields (department removed)
+        updatable_fields = ['doctor', 'date', 'time']
         
         for field in updatable_fields:
             if field in data:
@@ -336,7 +293,6 @@ def update_appointment(appointment_id):
                 'patient_id': appointment.patient_id,
                 'patient_name': f"{patient.first_name} {patient.last_name}" if patient else "Unknown",
                 'doctor': appointment.doctor,
-                'department': appointment.department,
                 'date': appointment.date.isoformat(),
                 'time': appointment.time,
                 'status': appointment.status,
@@ -516,7 +472,7 @@ def schedule_appointments():
     
     for idx, apt_data in enumerate(data):
         try:
-            # Validate required fields
+            # Validate required fields (doctor is required in bulk mode)
             required_fields = ['patient_id', 'doctor', 'date', 'time']
             for field in required_fields:
                 if not apt_data.get(field):
@@ -564,7 +520,6 @@ def schedule_appointments():
             appointment = Appointment(
                 patient_id=apt_data['patient_id'],
                 doctor=apt_data['doctor'],
-                department=apt_data.get('department'),
                 date=appointment_date,
                 time=apt_data['time'],
                 status=apt_data.get('status', 'Waiting')
