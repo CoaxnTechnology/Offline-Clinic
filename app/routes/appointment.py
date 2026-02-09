@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.models import Appointment, Patient
+from app.models import Appointment, Patient, Admin
 from app.extensions import db
 from app.utils.decorators import require_role
 from app.utils.audit import log_audit
@@ -35,9 +35,8 @@ def list_appointments():
     # Step 1b: If current user is a doctor, default to their own appointments
     # and show only "With Doctor" by default (doctor dashboard behaviour).
     current_doctor_name = None
+    current_user = None
     try:
-        from flask_jwt_extended import get_jwt_identity
-        from app.models import Admin
         user_id = int(get_jwt_identity())
         current_user = Admin.query.get(user_id)
     except Exception:
@@ -368,11 +367,7 @@ def create_appointment():
     # Step 8: Create new appointment and Visit (PDF spec: One Visit = One Study = One Report)
     try:
         from app.models import Visit
-        from flask_jwt_extended import get_jwt_identity
-        from app.models import Admin
-        
-        user_id = int(get_jwt_identity())
-        
+
         appointment = Appointment(
             patient_id=data['patient_id'],
             doctor=doctor_name,
