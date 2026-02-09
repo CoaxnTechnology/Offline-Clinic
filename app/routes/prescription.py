@@ -310,14 +310,19 @@ def download_prescription_pdf(prescription_id):
                 'resolved_path': full_path
             }), 404
 
-        # inline=1 or preview=1 → show in browser/Postman; otherwise force download
-        as_attachment = request.args.get('inline', request.args.get('preview')) not in ('1', 'true', 'yes')
-        return send_file(
-            full_path,
-            mimetype='application/pdf',
-            as_attachment=as_attachment,
-            download_name=f'prescription_{prescription.patient_id}_{prescription.id}.pdf'
-        )
+        # inline=1 or preview=1 → show in browser; otherwise force download
+        inline = request.args.get('inline', request.args.get('preview')) in ('1', 'true', 'yes')
+        download_name = f'prescription_{prescription.patient_id}_{prescription.id}.pdf'
+        file_size = os.path.getsize(full_path)
+        with open(full_path, 'rb') as f:
+            body = f.read()
+        from flask import Response
+        resp = Response(body, status=200, mimetype='application/pdf')
+        resp.headers['Content-Type'] = 'application/pdf'
+        resp.headers['Content-Length'] = str(file_size)
+        resp.headers['Content-Disposition'] = f"{'inline' if inline else 'attachment'}; filename=\"{download_name}\""
+        resp.headers['Cache-Control'] = 'no-store'
+        return resp
     
     except Exception as e:
         logger.error(f"Error downloading prescription PDF: {e}", exc_info=True)
