@@ -17,7 +17,11 @@ def list_appointments():
     List appointments for a given date (default: today) with filters and pagination.
     Query params:
         date: YYYY-MM-DD (optional, defaults to today's date)
-        patient_id, doctor, status, page, limit
+        patient_id: Filter by patient ID (optional)
+        doctor: Filter by doctor name (optional)
+        doctor_id: Filter by doctor Admin ID (optional; preferred for dashboards)
+        status: Filter by status (optional)
+        page, limit: Pagination
     """
     # Step 1: Get query parameters
     page = request.args.get('page', 1, type=int)
@@ -25,6 +29,7 @@ def list_appointments():
     filter_date = request.args.get('date', type=str)  # Format: YYYY-MM-DD
     patient_id = request.args.get('patient_id', type=str)
     doctor = request.args.get('doctor', type=str)
+    doctor_id = request.args.get('doctor_id', type=int)
     status = request.args.get('status', type=str)
     
     # Step 2: Validate pagination
@@ -54,8 +59,24 @@ def list_appointments():
     if patient_id:
         query = query.filter(Appointment.patient_id == patient_id)
     
+    # Filter by doctor name (string)
     if doctor:
         query = query.filter(Appointment.doctor.ilike(f'%{doctor}%'))  # Case-insensitive search
+    
+    # Filter by doctor_id (Admin.id) – used by doctor dashboard
+    if doctor_id:
+        try:
+            from app.models import Admin
+            doctor_admin = Admin.query.get(doctor_id)
+        except Exception:
+            doctor_admin = None
+        
+        if doctor_admin:
+            # Build display name the same way as when creating appointments
+            doctor_name = doctor_admin.first_name or doctor_admin.username
+            if doctor_admin.last_name:
+                doctor_name = f"{doctor_name} {doctor_admin.last_name}"
+            query = query.filter(Appointment.doctor == doctor_name)
     
     if status:
         query = query.filter(Appointment.status == status)

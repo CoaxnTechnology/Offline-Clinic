@@ -330,20 +330,24 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"patient_id\": 1,\n    \"appointment_date\": \"2026-02-10\",\n    \"appointment_time\": \"10:00\",\n    \"exam_type\": \"Ultrasound - Abdomen\",\n    \"notes\": \"Regular checkup\"\n}"
+              "raw": "{\n    \"patient_id\": \"PAT001\",\n    \"date\": \"2026-02-10\",\n    \"time\": \"10:00\",\n    \"status\": \"Waiting\"\n}"
             },
             "url": "{{base_url}}/api/appointments"
           }
         },
         {
-          "name": "List Appointments",
+          "name": "List Appointments (Today - Default)",
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{base_url}}/api/appointments?page=1&limit=20",
+              "raw": "{{base_url}}/api/appointments?date=2026-02-09&page=1&limit=20",
               "host": ["{{base_url}}"],
               "path": ["api", "appointments"],
               "query": [
+                {"key": "date", "value": "2026-02-09", "description": "YYYY-MM-DD (optional, defaults to today)"},
+                {"key": "patient_id", "value": "", "description": "Filter by patient ID (optional)"},
+                {"key": "doctor", "value": "", "description": "Filter by doctor name (optional)"},
+                {"key": "status", "value": "", "description": "Filter by status (optional)"},
                 {"key": "page", "value": "1"},
                 {"key": "limit", "value": "20"}
               ]
@@ -364,9 +368,21 @@
             "header": [{"key": "Content-Type", "value": "application/json"}],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"status\": \"confirmed\",\n    \"notes\": \"Updated notes\"\n}"
+              "raw": "{\n    \"doctor\": \"Dr. Smith\",\n    \"date\": \"2026-02-10\",\n    \"time\": \"11:00\"\n}"
             },
             "url": "{{base_url}}/api/appointments/1"
+          }
+        },
+        {
+          "name": "Update Appointment Status",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"status\": \"With Doctor\"\n}"
+            },
+            "url": "{{base_url}}/api/appointments/1/status"
           }
         },
         {
@@ -375,19 +391,77 @@
             "method": "DELETE",
             "url": "{{base_url}}/api/appointments/1"
           }
-        },
+        }
+      ]
+    },
+    {
+      "name": "Prescriptions",
+      "item": [
         {
-          "name": "Get Today's Appointments",
+          "name": "Create Prescription (Single Medicine)",
           "request": {
-            "method": "GET",
-            "url": "{{base_url}}/api/appointments/today"
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"patient_id\": \"PAT001\",\n    \"medicine\": \"Paracetamol 500mg\",\n    \"dosage\": \"1-0-1\",\n    \"duration_days\": 5,\n    \"notes\": \"After food\"\n}"
+            },
+            "url": "{{base_url}}/api/prescriptions"
           }
         },
         {
-          "name": "Get Appointments by Date",
+          "name": "Create Prescription (Multiple Medicines)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"patient_id\": \"PAT001\",\n    \"items\": [\n        {\n            \"medicine\": \"Paracetamol 500mg\",\n            \"dosage\": \"1-0-1\",\n            \"duration_days\": 5,\n            \"notes\": \"After food\"\n        },\n        {\n            \"medicine\": \"Amoxicillin 250mg\",\n            \"dosage\": \"1-1-1\",\n            \"duration_days\": 7,\n            \"notes\": \"Before meals\"\n        }\n    ]\n}"
+            },
+            "url": "{{base_url}}/api/prescriptions"
+          }
+        },
+        {
+          "name": "Get Prescription",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/appointments/date/2026-02-10"
+            "url": "{{base_url}}/api/prescriptions/1"
+          }
+        },
+        {
+          "name": "Download Prescription PDF",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/prescriptions/1/download?inline=1",
+              "host": ["{{base_url}}"],
+              "path": ["api", "prescriptions", "1", "download"],
+              "query": [
+                {"key": "inline", "value": "1", "description": "Preview in browser (optional)"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Patient Prescriptions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/prescriptions/patient/PAT001?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "prescriptions", "patient", "PAT001"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "20"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Prescription",
+          "request": {
+            "method": "DELETE",
+            "url": "{{base_url}}/api/prescriptions/1"
           }
         }
       ]
@@ -396,15 +470,30 @@
       "name": "Reports",
       "item": [
         {
-          "name": "Generate Report",
+          "name": "List Reports",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/reports?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "reports"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Generate Report (Template-based)",
           "request": {
             "method": "POST",
-            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n    \"appointment_id\": 1,\n    \"findings\": \"Normal findings\",\n    \"impression\": \"No abnormalities detected\",\n    \"recommendations\": \"Follow up in 6 months\"\n}"
+              "raw": "{\n  \"study_instance_uid\": \"1.2.840.113619.2.55.3.604688433.962.1453108125.467\",\n  \"patient_id\": \"PAT001\",\n  \"report_number\": \"RPT-TEST-0001\",\n  \"notes\": \"Test report\",\n  \"template_id\": 1,\n  \"template_data\": {\n    \"crl\": 45.0,\n    \"fetal_heart_rate\": 150,\n    \"ga_weeks\": 12,\n    \"edd\": \"2026-09-01\",\n    \"impression\": \"Normal 1st trimester ultrasound.\"\n  },\n  \"language\": \"en\",\n  \"visit_id\": 1,\n  \"async\": false\n}"
             },
-            "url": "{{base_url}}/api/reports"
+            "url": "{{base_url}}/api/reports/generate"
           }
         },
         {
@@ -415,10 +504,126 @@
           }
         },
         {
+          "name": "Get Report By Number",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/reports/number/RPT-TEST-0001"
+          }
+        },
+        {
           "name": "Download Report PDF",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/reports/1/pdf"
+            "url": "{{base_url}}/api/reports/1/download"
+          }
+        },
+        {
+          "name": "Get Report Status",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/reports/1/status"
+          }
+        },
+        {
+          "name": "Validate Report",
+          "request": {
+            "method": "POST",
+            "url": "{{base_url}}/api/reports/1/validate"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Visits",
+      "item": [
+        {
+          "name": "List Visits",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/visits?patient_id=PAT001&visit_status=scheduled&date=2026-02-09&page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "visits"],
+              "query": [
+                { "key": "patient_id", "value": "PAT001" },
+                { "key": "visit_status", "value": "scheduled" },
+                { "key": "date", "value": "2026-02-09" },
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Visit",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/visits/1"
+          }
+        },
+        {
+          "name": "Update Visit",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"visit_status\": \"completed\",\n  \"exam_type\": \"OB 1st trimester scan\",\n  \"modality\": \"US\",\n  \"study_instance_uid\": \"1.2.840.113619.2.55.3.604688433.962.1453108125.467\"\n}"
+            },
+            "url": "{{base_url}}/api/visits/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Report Templates",
+      "item": [
+        {
+          "name": "List Templates",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/report-templates?template_type=OB&category=1st_trimester&language=en&is_active=true",
+              "host": ["{{base_url}}"],
+              "path": ["api", "report-templates"],
+              "query": [
+                { "key": "template_type", "value": "OB" },
+                { "key": "category", "value": "1st_trimester" },
+                { "key": "language", "value": "en" },
+                { "key": "is_active", "value": "true" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Template",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/report-templates/1"
+          }
+        },
+        {
+          "name": "Create Template",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Custom Growth Scan\",\n  \"code\": \"OB_GROWTH_CUSTOM\",\n  \"template_type\": \"OB\",\n  \"category\": \"growth\",\n  \"language\": \"en\",\n  \"fields\": [\n    { \"code\": \"bpd\", \"label\": \"Biparietal Diameter\", \"type\": \"number\", \"unit\": \"mm\", \"required\": true },\n    { \"code\": \"impression\", \"label\": \"Impression\", \"type\": \"textarea\", \"required\": true }\n  ],\n  \"required_fields\": [\"bpd\", \"impression\"],\n  \"is_active\": true,\n  \"display_order\": 100\n}"
+            },
+            "url": "{{base_url}}/api/report-templates"
+          }
+        },
+        {
+          "name": "Update Template",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Morphology Scan (Updated Name)\",\n  \"is_active\": true\n}"
+            },
+            "url": "{{base_url}}/api/report-templates/1"
           }
         }
       ]
