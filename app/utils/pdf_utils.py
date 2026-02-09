@@ -581,39 +581,79 @@ def get_prescription_css():
     """
 
 
+def _pdf_escape(s):
+    s = str(s).replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
+    return s[:80]
+
+
 def generate_placeholder_prescription(output_path, prescription, patient=None, doctor=None):
-    """Generate placeholder text file if WeasyPrint not available"""
-    with open(output_path, 'w') as f:
-        f.write("=" * 60 + "\n")
-        f.write("PRESCRIPTION\n")
-        f.write("=" * 60 + "\n\n")
-        f.write(f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
-        
-        if patient:
-            f.write("Patient Information:\n")
-            f.write(f"  ID: {patient.id}\n")
-            f.write(f"  Name: {patient.first_name} {patient.last_name}\n")
-            f.write(f"  DOB: {patient.birth_date}\n")
-            f.write(f"  Gender: {patient.gender}\n\n")
-        
-        f.write("Prescription Details:\n")
-        for idx, item in enumerate(prescription.items, start=1):
-            f.write(f"  Item {idx}:\n")
-            f.write(f"    Medicine: {item.get('medicine', '')}\n")
-            f.write(f"    Dosage: {item.get('dosage', '')}\n")
-            f.write(f"    Duration: {item.get('duration_days', '')} days\n")
-            note = item.get('notes') or ''
-            if note:
-                f.write(f"    Notes: {note}\n")
-            f.write("\n")
-        
-        if doctor:
-            f.write(f"Prescribed by: Dr. {doctor.first_name} {doctor.last_name}\n")
-        
-        f.write("\n")
-        f.write("Note: Full PDF generation requires WeasyPrint.\n")
-        f.write("Install system dependencies:\n")
-        f.write("  sudo apt install libpango-1.0-0 libharfbuzz0b libpangocairo-1.0-0 libcairo2\n")
-    
-    logger.warning(f"Placeholder prescription created: {output_path}")
+    """Generate a minimal valid PDF when WeasyPrint is not available (so file opens in document readers)."""
+    lines = [
+        "PRESCRIPTION",
+        f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        "",
+    ]
+    if patient:
+        lines.extend([
+            "Patient Information:",
+            f"  ID: {patient.id}",
+            f"  Name: {patient.first_name} {patient.last_name}",
+            f"  DOB: {patient.birth_date}",
+            f"  Gender: {patient.gender}",
+            "",
+        ])
+    lines.append("Prescription Details:")
+    for idx, item in enumerate(prescription.items, start=1):
+        lines.append(f"  Item {idx}:")
+        lines.append(f"    Medicine: {item.get('medicine', '')}")
+        lines.append(f"    Dosage: {item.get('dosage', '')}")
+        lines.append(f"    Duration: {item.get('duration_days', '')} days")
+        note = item.get('notes') or ''
+        if note:
+            lines.append(f"    Notes: {note}")
+        lines.append("")
+    if doctor:
+        lines.append(f"Prescribed by: Dr. {doctor.first_name} {doctor.last_name}")
+    lines.append("(Generated without WeasyPrint - install for formatted PDFs)")
+
+    y = 750
+    content_parts = []
+    for line in lines[:40]:
+        if y < 40:
+            break
+        content_parts.append(f"BT /F1 11 Tf 50 {y} Td ({_pdf_escape(line)}) Tj ET")
+        y -= 14
+    content = "\n".join(content_parts)
+    stream_body = content.encode('utf-8')
+    stream_len = len(stream_body)
+
+    parts = []
+    parts.append(b"%PDF-1.4\n")
+    # obj 1: Catalog
+    parts.append(b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
+    # obj 2: Pages
+    parts.append(b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n")
+    # obj 3: Page
+    parts.append(b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>\nendobj\n")
+    # obj 4: Content stream
+    parts.append(f"4 0 obj\n<< /Length {stream_len} >>\nstream\n".encode())
+    parts.append(stream_body)
+    parts.append(b"\nendstream\nendobj\n")
+
+    body = b"".join(parts)
+    xref_offset = len(body)
+    offsets = [0]  # object 0 (free)
+    for i in range(1, 5):
+        idx = body.find(f"{i} 0 obj".encode())
+        offsets.append(idx if idx >= 0 else 0)
+    xref = "xref\n0 5\n"
+    xref += f"{offsets[0]:010d} 65535 f \n"
+    for off in offsets[1:]:
+        xref += f"{off:010d} 00000 n \n"
+    trailer = f"trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n"
+    pdf = body + xref.encode() + trailer.encode()
+    with open(output_path, 'wb') as f:
+        f.write(pdf)
+
+    logger.warning(f"Placeholder prescription (minimal PDF) created: {output_path}")
     return output_path
