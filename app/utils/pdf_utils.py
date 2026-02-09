@@ -10,12 +10,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Styled prescription PDF uses WeasyPrint (generate_prescription_html + get_prescription_css).
+# If WeasyPrint is missing or fails, a plain minimal PDF is used. For styled PDFs on server,
+# install: pip install weasyprint  and  sudo apt install libpango-1.0-0 libharfbuzz0b libpangocairo-1.0-0 libcairo2
 try:
     from weasyprint import HTML, CSS
     WEASYPRINT_AVAILABLE = True
 except ImportError:
     WEASYPRINT_AVAILABLE = False
-    logger.warning("WeasyPrint not available. PDF generation will create placeholder files.")
+    logger.warning("WeasyPrint not available. Prescription PDFs will be plain. Install weasyprint + system deps for styled PDFs.")
 
 
 def generate_pdf_report(study_instance_uid, patient=None, images=None, output_path=None, report_number=None):
