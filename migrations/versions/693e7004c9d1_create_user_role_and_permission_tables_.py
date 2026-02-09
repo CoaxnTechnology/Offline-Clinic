@@ -1,7 +1,7 @@
 """Create user, role, and permission tables for admin system
 
 Revision ID: 693e7004c9d1
-Revises: 6f94f3e1f18c
+Revises: 8d2ca02eea5d
 Create Date: 2026-01-07 16:30:36.758609
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '693e7004c9d1'
-down_revision = '6f94f3e1f18c'
+down_revision = '8d2ca02eea5d'
 branch_labels = None
 depends_on = None
 

@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models import Appointment, Patient
 from app.extensions import db
 from app.utils.decorators import require_role
+from app.utils.audit import log_audit
 from datetime import datetime, date
 from app.routes.patient import _patient_to_dict  # Reuse full patient formatter
 
@@ -234,8 +235,14 @@ def create_appointment():
             'error': 'Appointment already exists for this patient, doctor, date, and time'
         }), 400
     
-    # Step 8: Create new appointment
+    # Step 8: Create new appointment and Visit (PDF spec: One Visit = One Study = One Report)
     try:
+        from app.models import Visit
+        from flask_jwt_extended import get_jwt_identity
+        from app.models import Admin
+        
+        user_id = int(get_jwt_identity())
+        
         appointment = Appointment(
             patient_id=data['patient_id'],
             doctor=doctor_name,
@@ -245,7 +252,24 @@ def create_appointment():
         )
         
         db.session.add(appointment)
+        db.session.flush()  # Get appointment.id
+        
+        # Create Visit/Order for this appointment (PDF spec: One Visit = One Study = One Report)
+        visit = Visit(
+            appointment_id=appointment.id,
+            patient_id=appointment.patient_id,
+            visit_date=appointment_date,
+            visit_status='scheduled',
+            exam_type='OB/GYN Ultrasound',
+            modality='US',
+            created_by=user_id
+        )
+        
+        db.session.add(visit)
         db.session.commit()
+        
+        # Audit log
+        log_audit('appointment', 'create', user_id=user_id, entity_id=str(appointment.id), details={'patient_id': appointment.patient_id, 'date': appointment.date.isoformat()})
         
         # Step 8: Return created appointment
         return jsonify({
@@ -258,6 +282,7 @@ def create_appointment():
                 'date': appointment.date.isoformat(),
                 'time': appointment.time,
                 'status': appointment.status,
+                'visit_id': visit.id,
                 'created_at': appointment.created_at.isoformat()
             },
             'message': 'Appointment created successfully'
@@ -315,6 +340,10 @@ def update_appointment(appointment_id):
         # Note: Notes field does not exist - not updatable
         
         db.session.commit()
+        
+        # Audit log
+        user_id = int(get_jwt_identity())
+        log_audit('appointment', 'update', user_id=user_id, entity_id=str(appointment_id), details={'patient_id': appointment.patient_id})
         
         # Step 4: Get patient info for response
         patient = Patient.query.get(appointment.patient_id)

@@ -7,6 +7,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.extensions import db
 from app.models import Patient, Prescription, Admin
 from app.utils.decorators import require_role
+from app.utils.audit import log_audit
 from app.utils.pdf_utils import generate_prescription_pdf
 import os
 import logging
@@ -181,6 +182,9 @@ def create_prescription():
             prescription.pdf_path = pdf_path
             db.session.commit()
             
+            # Audit log
+            log_audit('prescription', 'create', user_id=user_id, entity_id=str(prescription.id), details={'patient_id': patient_id, 'medicine_count': len(items_payload) if items_payload else 1})
+            
             logger.info(f"Prescription {prescription.id} created for patient {patient_id} by doctor {user_id}")
             
             return jsonify({
@@ -233,6 +237,10 @@ def delete_prescription(prescription_id):
                 except OSError:
                     pass
 
+        # Audit log before deletion
+        user_id = int(get_jwt_identity())
+        log_audit('prescription', 'delete', user_id=user_id, entity_id=str(prescription_id), details={'patient_id': prescription.patient_id})
+        
         db.session.delete(prescription)
         db.session.commit()
 

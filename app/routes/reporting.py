@@ -7,6 +7,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.extensions import db
 from app.models import DicomImage, Patient
 from app.utils.decorators import require_role
+from app.utils.audit import log_audit
 from app.services.report_service import (
     create_report,
     generate_report_pdf,
@@ -145,10 +146,47 @@ def generate_report():
             }), 404
         
         # Get optional fields
+        from app.models import Visit, ReportTemplate
         patient_id = data.get('patient_id')
         report_number = data.get('report_number')
         notes = data.get('notes')
+        template_id = data.get('template_id')
+        template_data = data.get('template_data')  # JSON object with field values
+        language = data.get('language', 'en')
+        visit_id = data.get('visit_id')
         async_generation = data.get('async', False)
+        
+        # Validate template if provided
+        template = None
+        if template_id:
+            template = ReportTemplate.query.get(template_id)
+            if not template:
+                return jsonify({
+                    'success': False,
+                    'error': 'Template not found'
+                }), 404
+            
+            if not template.is_active:
+                return jsonify({
+                    'success': False,
+                    'error': 'Template is not active'
+                }), 400
+            
+            # Validate template_data structure
+            if not template_data or not isinstance(template_data, dict):
+                return jsonify({
+                    'success': False,
+                    'error': 'template_data must be a JSON object with field values'
+                }), 400
+        
+        # Find Visit if visit_id provided, or try to find by study_instance_uid
+        visit = None
+        if visit_id:
+            visit = Visit.query.get(visit_id)
+        else:
+            # Try to find Visit by study_instance_uid via DICOM images
+            if study_images:
+                visit = Visit.query.filter_by(study_instance_uid=study_images.study_instance_uid).first()
         
         # Create report record
         report = create_report(
@@ -156,10 +194,17 @@ def generate_report():
             patient_id=patient_id,
             generated_by=current_user.id,
             report_number=report_number,
-            notes=notes
+            notes=notes,
+            template_id=template_id,
+            template_data=template_data,
+            language=language,
+            visit_id=visit.id if visit else None
         )
         
         db.session.commit()
+        
+        # Audit log
+        log_audit('report', 'create', user_id=current_user.id, entity_id=str(report.id), details={'report_number': report.report_number, 'study_instance_uid': study_instance_uid, 'template_id': template_id})
         
         # Generate PDF
         if async_generation:
@@ -191,6 +236,9 @@ def generate_report():
         # Synchronous generation
         try:
             pdf_path = generate_report_pdf(report)
+            
+            # Audit log for PDF generation
+            log_audit('report', 'export', user_id=current_user.id, entity_id=str(report.id), details={'report_number': report.report_number, 'pdf_path': pdf_path})
             
             return jsonify({
                 'success': True,
@@ -306,6 +354,10 @@ def download_report(report_id):
                 'error': 'Invalid file path'
             }), 400
         
+        # Audit log for report download/export
+        user_id = int(get_jwt_identity())
+        log_audit('report', 'export', user_id=user_id, entity_id=str(report_id), details={'report_number': report.report_number, 'download': True})
+        
         return send_file(
             file_path,
             mimetype='application/pdf',
@@ -397,24 +449,57 @@ def delete_report_endpoint(report_id):
 @jwt_required()
 @require_role('doctor')
 def validate_report_endpoint(report_id):
-    """Validate a report (PDF spec §6: Draft → Validated; no modification after)."""
-    from app.models import Report
+    """
+    Validate a report (PDF spec §6: Draft → Validated; no modification after).
+    Enforces mandatory fields if template is used.
+    """
+    from app.models import Report, ReportTemplate
     from app.services.report_service import validate_report
+    import json
     try:
         user_id = int(get_jwt_identity())
-        report = validate_report(report_id, user_id)
+        report = Report.query.get(report_id)
         if not report:
-            r = Report.query.get(report_id)
-            if not r:
-                return jsonify({'success': False, 'error': 'Report not found'}), 404
+            return jsonify({'success': False, 'error': 'Report not found'}), 404
+        
+        # Check if report is already validated/archived
+        if report.lifecycle_state not in (None, 'draft'):
             return jsonify({
                 'success': False,
                 'error': 'Report is already validated or archived'
             }), 400
+        
+        # If template is used, validate mandatory fields
+        if report.template_id:
+            template = ReportTemplate.query.get(report.template_id)
+            if template:
+                required_fields = template.get_required_fields()
+                template_data = json.loads(report.template_data) if report.template_data else {}
+                
+                missing_fields = []
+                for field_code in required_fields:
+                    if field_code not in template_data or not template_data[field_code]:
+                        missing_fields.append(field_code)
+                
+                if missing_fields:
+                    return jsonify({
+                        'success': False,
+                        'error': f'Missing required fields: {", ".join(missing_fields)}',
+                        'missing_fields': missing_fields
+                    }), 400
+        
+        # Validate the report
+        validated_report = validate_report(report_id, user_id)
+        if not validated_report:
+            return jsonify({
+                'success': False,
+                'error': 'Failed to validate report'
+            }), 500
+        
         return jsonify({
             'success': True,
             'message': 'Report validated',
-            'data': report.to_dict()
+            'data': validated_report.to_dict()
         })
     except Exception as e:
         logger.error(f"Error validating report {report_id}: {e}", exc_info=True)

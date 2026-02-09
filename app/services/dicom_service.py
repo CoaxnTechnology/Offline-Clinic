@@ -9,6 +9,7 @@ from typing import Optional, List, Dict, Any
 
 from pynetdicom import AE, evt, debug_logger
 from pynetdicom.sop_class import Verification
+from pynetdicom.dsutils import encode
 from pydicom import Dataset
 from pydicom.uid import (
     generate_uid,
@@ -33,8 +34,10 @@ logger = logging.getLogger(__name__)
 # Global variables for DICOM servers
 _mwl_server_thread = None
 _storage_server_thread = None
+_mpps_server_thread = None
 _mwl_server_running = False
 _storage_server_running = False
+_mpps_server_running = False
 
 
 def handle_mwl_find(event):
@@ -290,6 +293,159 @@ def handle_store(event):
         return 0xC001  # Processing failure
 
 
+def handle_mpps_create(event):
+    """
+    Handle MPPS N-CREATE (exam started)
+    Updates Visit status to 'in_progress' and Appointment status
+    """
+    try:
+        ds = event.request.AttributeList
+        if not ds:
+            logger.warning("MPPS N-CREATE received with no dataset")
+            return 0xC000, None
+        
+        # Extract identifiers
+        accession_number = getattr(ds, 'AccessionNumber', None)
+        study_instance_uid = getattr(ds, 'ReferencedStudySequence', [{}])[0].get('ReferencedSOPInstanceUID', None) if hasattr(ds, 'ReferencedStudySequence') else None
+        scheduled_procedure_step_id = getattr(ds, 'ScheduledProcedureStepID', None)
+        
+        logger.info(f"MPPS N-CREATE: Exam started - Accession: {accession_number}, StudyUID: {study_instance_uid}")
+        
+        # Find Visit by AccessionNumber
+        from app.models import Visit
+        visit = None
+        if accession_number:
+            visit = Visit.query.filter_by(accession_number=accession_number, deleted_at=None).first()
+        
+        if visit:
+            visit.visit_status = 'in_progress'
+            visit.study_instance_uid = study_instance_uid
+            
+            # Update Appointment status
+            if visit.appointment:
+                if visit.appointment.status == 'Waiting':
+                    visit.appointment.status = 'With Technician'
+            
+            db.session.commit()
+            logger.info(f"Updated Visit {visit.id} status to 'in_progress' via MPPS")
+        else:
+            logger.warning(f"MPPS N-CREATE: Visit not found for AccessionNumber: {accession_number}")
+        
+        # Return success
+        return 0x0000, None
+    
+    except Exception as e:
+        logger.error(f"Error handling MPPS N-CREATE: {e}", exc_info=True)
+        db.session.rollback()
+        return 0xC001, None
+
+
+def handle_mpps_set(event):
+    """
+    Handle MPPS N-SET (exam status update, e.g., completed)
+    Updates Visit status to 'completed' and Appointment status
+    """
+    try:
+        ds = event.request.AttributeList
+        if not ds:
+            logger.warning("MPPS N-SET received with no dataset")
+            return 0xC000, None
+        
+        # Extract identifiers
+        accession_number = getattr(ds, 'AccessionNumber', None)
+        procedure_step_status = getattr(ds, 'PerformedProcedureStepStatus', None)
+        study_instance_uid = getattr(ds, 'ReferencedStudySequence', [{}])[0].get('ReferencedSOPInstanceUID', None) if hasattr(ds, 'ReferencedStudySequence') else None
+        
+        logger.info(f"MPPS N-SET: Status update - Accession: {accession_number}, Status: {procedure_step_status}")
+        
+        # Find Visit by AccessionNumber
+        from app.models import Visit
+        visit = None
+        if accession_number:
+            visit = Visit.query.filter_by(accession_number=accession_number, deleted_at=None).first()
+        
+        if visit:
+            # Update Visit status based on MPPS status
+            if procedure_step_status == 'COMPLETED':
+                visit.visit_status = 'completed'
+                visit.study_instance_uid = study_instance_uid or visit.study_instance_uid
+                
+                # Update Appointment status
+                if visit.appointment:
+                    visit.appointment.status = 'Completed'
+                
+                db.session.commit()
+                logger.info(f"Updated Visit {visit.id} status to 'completed' via MPPS")
+            elif procedure_step_status == 'DISCONTINUED':
+                visit.visit_status = 'cancelled'
+                db.session.commit()
+                logger.info(f"Updated Visit {visit.id} status to 'cancelled' via MPPS")
+        else:
+            logger.warning(f"MPPS N-SET: Visit not found for AccessionNumber: {accession_number}")
+        
+        # Return success
+        return 0x0000, None
+    
+    except Exception as e:
+        logger.error(f"Error handling MPPS N-SET: {e}", exc_info=True)
+        db.session.rollback()
+        return 0xC001, None
+
+
+def start_mpps_server():
+    """Start the MPPS (Modality Performed Procedure Step) server"""
+    global _mpps_server_thread, _mpps_server_running
+    
+    if _mpps_server_running:
+        logger.warning("MPPS server is already running")
+        return
+    
+    def _run_mpps_server():
+        global _mpps_server_running
+        try:
+            ae = AE(ae_title=Config.DICOM_AE_TITLE)
+            ae.require_called_aet = False
+            ts = [ImplicitVRLittleEndian, ExplicitVRLittleEndian]
+            
+            # MPPS SOP Classes
+            ae.add_supported_context('1.2.840.10008.5.1.4.32.2', ts)  # MPPS N-CREATE
+            ae.add_supported_context('1.2.840.10008.5.1.4.32.3', ts)  # MPPS N-SET
+            ae.add_supported_context(Verification, ts)
+            
+            # Production: Bind to all interfaces for remote access
+            bind_address = '0.0.0.0'
+            mpps_port = Config.DICOM_MWL_PORT + 2  # Use MWL port + 2 for MPPS
+            logger.info(f"Starting MPPS server on {bind_address}:{mpps_port}")
+            _mpps_server_running = True
+            ae.start_server(
+                (bind_address, mpps_port),
+                block=True,
+                evt_handlers=[
+                    (evt.EVT_N_CREATE, handle_mpps_create),
+                    (evt.EVT_N_SET, handle_mpps_set)
+                ]
+            )
+        except OSError as e:
+            if "Address already in use" in str(e):
+                logger.error(f"MPPS port {mpps_port} is already in use.")
+            else:
+                logger.error(f"MPPS server error: {e}", exc_info=True)
+            _mpps_server_running = False
+        except Exception as e:
+            logger.error(f"MPPS server error: {e}", exc_info=True)
+            _mpps_server_running = False
+    
+    _mpps_server_thread = threading.Thread(target=_run_mpps_server, daemon=True, name="MPPS-Server")
+    _mpps_server_thread.start()
+    logger.info("MPPS server thread started")
+    
+    # Wait a moment to verify it started
+    import time
+    time.sleep(0.5)
+    if not _mpps_server_running:
+        logger.warning("MPPS server may not have started properly")
+
+
 def start_mwl_server():
     """Start the Modality Worklist server - Production ready"""
     global _mwl_server_thread, _mwl_server_running
@@ -397,16 +553,18 @@ def start_storage_server():
 
 
 def start_dicom_servers():
-    """Start both MWL and Storage servers"""
+    """Start MWL, Storage, and MPPS servers"""
     start_mwl_server()
     start_storage_server()
+    start_mpps_server()  # Optional but recommended
 
 
 def stop_dicom_servers():
     """Stop DICOM servers (placeholder - pynetdicom doesn't have easy stop method)"""
-    global _mwl_server_running, _storage_server_running
+    global _mwl_server_running, _storage_server_running, _mpps_server_running
     _mwl_server_running = False
     _storage_server_running = False
+    _mpps_server_running = False
     logger.info("DICOM servers stopped")
 
 
@@ -427,17 +585,23 @@ def get_server_status() -> Dict[str, Any]:
     
     mwl_port_open = check_port(Config.DICOM_MWL_PORT)
     storage_port_open = check_port(Config.DICOM_STORAGE_PORT)
+    mpps_port = Config.DICOM_MWL_PORT + 2
+    mpps_port_open = check_port(mpps_port)
     
     return {
         'mwl_server_running': _mwl_server_running and mwl_port_open,
         'storage_server_running': _storage_server_running and storage_port_open,
+        'mpps_server_running': _mpps_server_running and mpps_port_open,
         'mwl_port': Config.DICOM_MWL_PORT,
         'storage_port': Config.DICOM_STORAGE_PORT,
+        'mpps_port': mpps_port,
         'ae_title': Config.DICOM_AE_TITLE,
         'mwl_port_open': mwl_port_open,
         'storage_port_open': storage_port_open,
+        'mpps_port_open': mpps_port_open,
         'threads': {
             'mwl_thread_alive': _mwl_server_thread.is_alive() if _mwl_server_thread else False,
-            'storage_thread_alive': _storage_server_thread.is_alive() if _storage_server_thread else False
+            'storage_thread_alive': _storage_server_thread.is_alive() if _storage_server_thread else False,
+            'mpps_thread_alive': _mpps_server_thread.is_alive() if _mpps_server_thread else False
         }
     }

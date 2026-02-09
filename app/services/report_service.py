@@ -26,7 +26,11 @@ def create_report(
     patient_id: Optional[str] = None,
     generated_by: Optional[int] = None,
     report_number: Optional[str] = None,
-    notes: Optional[str] = None
+    notes: Optional[str] = None,
+    template_id: Optional[int] = None,
+    template_data: Optional[Dict[str, Any]] = None,
+    language: str = 'en',
+    visit_id: Optional[int] = None
 ) -> Report:
     """
     Create a new report record
@@ -56,6 +60,20 @@ def create_report(
     # Get images for the study
     images = DicomImage.query.filter_by(study_instance_uid=study_instance_uid).all()
     
+    # Get Visit and AccessionNumber if visit_id provided
+    accession_number = None
+    if visit_id:
+        from app.models import Visit
+        visit = Visit.query.get(visit_id)
+        if visit:
+            accession_number = visit.accession_number
+    
+    # Serialize template_data if provided
+    template_data_json = None
+    if template_data:
+        import json
+        template_data_json = json.dumps(template_data, ensure_ascii=False)
+    
     # Create report record
     report = Report(
         report_number=report_number,
@@ -68,7 +86,12 @@ def create_report(
         generated_by=generated_by,
         notes=notes,
         file_path='',  # Will be set after PDF generation
-        file_size=0
+        file_size=0,
+        template_id=template_id,
+        template_data=template_data_json,
+        language=language,
+        visit_id=visit_id,
+        accession_number=accession_number
     )
     
     db.session.add(report)

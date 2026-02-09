@@ -512,10 +512,34 @@ def send_mwl_for_appointment(appointment_id):
             # Still allow it, but log warning
         
         # PDF spec: generate AccessionNumber and MWL IDs once (immutable); then publish to MWL
+        from app.models import Visit
+        
+        # Get or create Visit for this appointment (PDF spec: One Visit = One Study = One Report)
+        visit = Visit.query.filter_by(appointment_id=appointment_id).first()
+        if not visit:
+            visit = Visit(
+                appointment_id=appointment_id,
+                patient_id=appointment.patient_id,
+                visit_date=appointment.date,
+                visit_status='scheduled',
+                exam_type='OB/GYN Ultrasound',
+                modality='US',
+                created_by=current_user.id
+            )
+            db.session.add(visit)
+            db.session.flush()
+        
+        # Generate AccessionNumber if not already set
         if appointment.accession_number is None:
             appointment.accession_number = f"ACC{appointment.id:08d}"
             appointment.requested_procedure_id = f"RQ{appointment.id:08d}"
             appointment.scheduled_procedure_step_id = f"SP{appointment.id:08d}"
+        
+        # Update Visit with AccessionNumber and DICOM IDs
+        visit.accession_number = appointment.accession_number
+        visit.requested_procedure_id = appointment.requested_procedure_id
+        visit.scheduled_procedure_step_id = appointment.scheduled_procedure_step_id
+        visit.visit_status = 'in_progress'
         
         # Update appointment status to indicate MWL is ready
         old_status = appointment.status

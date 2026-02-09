@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models import Patient, Appointment
 from app.extensions import db
 from app.utils.decorators import require_role
+from app.utils.audit import log_audit
 from sqlalchemy import or_
 from datetime import datetime
 
@@ -253,6 +254,10 @@ def create_patient():
         db.session.add(patient)
         db.session.commit()
         
+        # Audit log
+        user_id = int(get_jwt_identity())
+        log_audit('patient', 'create', user_id=user_id, entity_id=patient.id, details={'name': f"{patient.first_name} {patient.last_name}"})
+        
         # Step 7: Return created patient (full info; empty fields as N/A)
         return jsonify({
             'success': True,
@@ -402,8 +407,10 @@ def delete_patient(patient_id):
             'error': 'Patient not found'
         }), 404
     try:
+        user_id = int(get_jwt_identity())
         patient.deleted_at = dt.utcnow()
         db.session.commit()
+        log_audit('patient', 'delete', user_id=user_id, entity_id=patient_id, details={'name': f"{patient.first_name} {patient.last_name}"})
         return jsonify({
             'success': True,
             'message': f'Patient {patient_id} deleted successfully'
