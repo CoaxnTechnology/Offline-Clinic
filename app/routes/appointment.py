@@ -354,7 +354,7 @@ def update_appointment_status(appointment_id):
     """
     Update appointment status
     Access: doctor, technician
-    Status values: Waiting, In-Room, In-Scan, With Doctor, With Technician, Review, Completed
+    Status values: Waiting, With Doctor, With Technician, Completed
     """
     # Step 1: Find appointment
     appointment = Appointment.query.get(appointment_id)
@@ -380,10 +380,7 @@ def update_appointment_status(appointment_id):
         }), 400
     
     # Step 3: Validate status value
-    valid_statuses = [
-        'Waiting', 'In-Room', 'In-Scan', 'With Doctor', 
-        'With Technician', 'Review', 'Completed'
-    ]
+    valid_statuses = ['Waiting', 'With Doctor', 'With Technician', 'Completed']
     
     if new_status not in valid_statuses:
         return jsonify({

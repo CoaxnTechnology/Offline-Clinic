@@ -26,6 +26,7 @@ numpy==1.26.4
 
 # PDF Generation (structured reports with thumbnails)
 weasyprint==62.0
+reportlab>=4.0.0
 # System deps for weasyprint: sudo apt install libpango-1.0-0 libharfbuzz0b libpangocairo-1.0-0 libcairo2
 
 # Security & Auth

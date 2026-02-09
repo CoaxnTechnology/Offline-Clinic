@@ -15,9 +15,8 @@ class Appointment(db.Model, TimestampMixin):
     date = db.Column(db.Date, nullable=False)
     time = db.Column(db.String(10), nullable=False)  # e.g., "10:45"
 
-    # Status from PDF + frontend: Waiting → In-Room → In-Scan → Review → Completed
+    # Status: Waiting, With Doctor, With Technician, Completed
     status = db.Column(db.String(30), default='Waiting')
-    # Possible values: Waiting, In-Room, In-Scan, With Doctor, With Technician, Review, Completed
 
     # --- PDF spec: DICOM MWL & matching (immutable once set) ---
     accession_number = db.Column(db.String(64), unique=True, nullable=True, index=True)  # Study matching key

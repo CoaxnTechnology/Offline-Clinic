@@ -519,7 +519,7 @@ def send_mwl_for_appointment(appointment_id):
         
         # Update appointment status to indicate MWL is ready
         old_status = appointment.status
-        if appointment.status not in ['Waiting', 'In-Room', 'In-Scan']:
+        if appointment.status not in ['Waiting', 'With Doctor', 'With Technician', 'Completed']:
             appointment.status = 'Waiting'
         
         db.session.commit()

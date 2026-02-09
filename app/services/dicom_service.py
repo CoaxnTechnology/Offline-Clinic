@@ -65,7 +65,7 @@ def handle_mwl_find(event):
     try:
         # Query appointments published to MWL (have accession_number) and not deleted
         query = Appointment.query.filter(
-            Appointment.status.in_(['Waiting', 'In-Room', 'In-Scan']),
+            Appointment.status.in_(['Waiting', 'With Doctor', 'With Technician', 'Completed']),
             Appointment.accession_number.isnot(None),
             Appointment.deleted_at.is_(None),
         )

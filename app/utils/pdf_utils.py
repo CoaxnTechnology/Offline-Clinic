@@ -10,15 +10,22 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Styled prescription PDF uses WeasyPrint (generate_prescription_html + get_prescription_css).
-# If WeasyPrint is missing or fails, a plain minimal PDF is used. For styled PDFs on server,
-# install: pip install weasyprint  and  sudo apt install libpango-1.0-0 libharfbuzz0b libpangocairo-1.0-0 libcairo2
+# Styled prescription: WeasyPrint first; if missing/fails, ReportLab fallback (same style, no system deps).
 try:
     from weasyprint import HTML, CSS
     WEASYPRINT_AVAILABLE = True
 except ImportError:
     WEASYPRINT_AVAILABLE = False
-    logger.warning("WeasyPrint not available. Prescription PDFs will be plain. Install weasyprint + system deps for styled PDFs.")
+    logger.warning("WeasyPrint not available, using ReportLab for styled prescription PDFs.")
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    REPORTLAB_AVAILABLE = True
+except ImportError:
+    REPORTLAB_AVAILABLE = False
 
 
 def generate_pdf_report(study_instance_uid, patient=None, images=None, output_path=None, report_number=None):
@@ -333,25 +340,26 @@ def generate_prescription_pdf(prescription, patient=None, doctor=None, output_pa
     # Generate HTML content
     html_content = generate_prescription_html(prescription, patient, doctor)
     
-    # Generate PDF
+    # Generate PDF: WeasyPrint first, then ReportLab (styled), then minimal placeholder
     if WEASYPRINT_AVAILABLE:
         try:
-            # Generate PDF from HTML
             HTML(string=html_content).write_pdf(
                 output_path,
                 stylesheets=[CSS(string=get_prescription_css())]
             )
-            logger.info(f"Prescription PDF generated: {output_path}")
+            logger.info(f"Prescription PDF generated (WeasyPrint): {output_path}")
             return output_path_relative
         except Exception as e:
-            logger.error(f"Error generating prescription PDF with WeasyPrint: {e}", exc_info=True)
-            generate_placeholder_prescription(output_path, prescription, patient, doctor)
+            logger.error(f"WeasyPrint failed: {e}", exc_info=True)
+    if REPORTLAB_AVAILABLE:
+        try:
+            _generate_prescription_pdf_reportlab(output_path, prescription, patient, doctor)
+            logger.info(f"Prescription PDF generated (ReportLab): {output_path}")
             return output_path_relative
-    else:
-        # Fallback to placeholder if WeasyPrint not available
-        logger.warning("WeasyPrint not available, creating placeholder prescription")
-        generate_placeholder_prescription(output_path, prescription, patient, doctor)
-        return output_path_relative
+        except Exception as e:
+            logger.error(f"ReportLab prescription PDF failed: {e}", exc_info=True)
+    generate_placeholder_prescription(output_path, prescription, patient, doctor)
+    return output_path_relative
 
 
 def generate_prescription_html(prescription, patient=None, doctor=None):
@@ -589,8 +597,105 @@ def _pdf_escape(s):
     return s[:80]
 
 
+def _generate_prescription_pdf_reportlab(output_path, prescription, patient=None, doctor=None):
+    """Styled prescription PDF using ReportLab (same look as WeasyPrint: blue header, tables, signature)."""
+    doc = SimpleDocTemplate(
+        output_path, pagesize=A4,
+        leftMargin=2*cm, rightMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        name='PrescriptionTitle',
+        parent=styles['Heading1'],
+        fontSize=24,
+        textColor=colors.HexColor('#0066cc'),
+        spaceAfter=6,
+        alignment=1,
+    )
+    heading_style = ParagraphStyle(
+        name='SectionHeading',
+        parent=styles['Heading2'],
+        fontSize=14,
+        textColor=colors.HexColor('#0066cc'),
+        spaceAfter=8,
+        borderPadding=(0, 0, 2, 0),
+    )
+    normal = styles['Normal']
+    story = []
+
+    # Header
+    story.append(Paragraph("PRESCRIPTION", title_style))
+    story.append(Paragraph(f"Date: {datetime.now().strftime('%d-%m-%Y')}", normal))
+    story.append(Spacer(1, 16))
+
+    # Patient info table
+    patient_name = f"{patient.first_name} {patient.last_name}" if patient else "Unknown"
+    patient_id = patient.id if patient else prescription.patient_id
+    patient_dob = patient.birth_date.strftime('%Y-%m-%d') if patient and patient.birth_date else "N/A"
+    patient_gender = patient.gender if patient else "N/A"
+    patient_age = ""
+    if patient and patient.birth_date:
+        today = datetime.now().date()
+        age = today.year - patient.birth_date.year - ((today.month, today.day) < (patient.birth_date.month, patient.birth_date.day))
+        patient_age = f"{age} years"
+    story.append(Paragraph("Patient Information", heading_style))
+    pt_data = [
+        ["Patient ID:", patient_id],
+        ["Patient Name:", patient_name],
+        ["Date of Birth:", patient_dob],
+        ["Age:", patient_age],
+        ["Gender:", patient_gender],
+    ]
+    pt = Table(pt_data, colWidths=[5*cm, 10*cm])
+    pt.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f5f5f5')),
+        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
+        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    story.append(pt)
+    story.append(Spacer(1, 20))
+
+    # Prescription table
+    story.append(Paragraph("Prescription Details", heading_style))
+    presc_data = [["Medicine", "Dosage", "Duration"]]
+    for item in prescription.items:
+        med = item.get('medicine', '')
+        dos = item.get('dosage', '')
+        note = item.get('notes', '')
+        if note:
+            dos = f"{dos}\n{note}"
+        presc_data.append([med, dos, f"{item.get('duration_days', '')} days"])
+    pt2 = Table(presc_data, colWidths=[5*cm, 7*cm, 3*cm])
+    pt2.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0066cc')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
+    story.append(pt2)
+    story.append(Spacer(1, 40))
+
+    # Signature
+    doctor_name = f"Dr. {doctor.first_name} {doctor.last_name}" if doctor else "Dr. Unknown"
+    story.append(Paragraph("<b>Prescribed by:</b>", normal))
+    story.append(Paragraph(f'<font color="#0066cc" size="14"><b>{doctor_name}</b></font>', normal))
+    story.append(Spacer(1, 30))
+    story.append(Paragraph("_" * 30, normal))
+    story.append(Spacer(1, 30))
+    story.append(Paragraph(
+        "<i>This is a computer-generated prescription. Please follow the dosage instructions carefully.</i>",
+        ParagraphStyle(name='Footer', parent=normal, fontSize=9, textColor=colors.grey, alignment=1)
+    ))
+    doc.build(story)
+
+
 def generate_placeholder_prescription(output_path, prescription, patient=None, doctor=None):
-    """Generate a minimal valid PDF when WeasyPrint is not available (so file opens in document readers)."""
+    """Minimal valid PDF when WeasyPrint and ReportLab both unavailable."""
     lines = [
         "PRESCRIPTION",
         f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
