@@ -5,6 +5,7 @@ Stores metadata for generated PDF reports
 from app.extensions import db
 from .base import TimestampMixin
 from datetime import datetime
+import json
 
 
 class Report(db.Model, TimestampMixin):
@@ -19,12 +20,20 @@ class Report(db.Model, TimestampMixin):
     # Report identification
     report_number = db.Column(db.String(50), unique=True, nullable=False, index=True)
     
+    # Link to Visit/Order (PDF spec: One Visit = One Study = One Report)
+    visit_id = db.Column(db.Integer, db.ForeignKey('visits.id'), nullable=True, unique=True, index=True)
+    
     # Associated DICOM study
     study_instance_uid = db.Column(db.String(255), nullable=False, index=True)
     
     # Patient information (denormalized for quick access)
     patient_id = db.Column(db.String(20), db.ForeignKey('patients.id'), nullable=True, index=True)
     patient_name = db.Column(db.String(255))
+    
+    # Template-based reporting (PDF spec §5)
+    template_id = db.Column(db.Integer, db.ForeignKey('report_templates.id'), nullable=True, index=True)
+    template_data = db.Column(db.Text)  # JSON: field values from template
+    language = db.Column(db.String(10), default='en')  # 'en' or 'fr'
     
     # Report details
     report_type = db.Column(db.String(50), default='DICOM Study Report')
@@ -50,7 +59,9 @@ class Report(db.Model, TimestampMixin):
     notes = db.Column(db.Text)
     
     # Relationships
+    visit = db.relationship('Visit', backref='report', uselist=False, lazy=True)
     patient = db.relationship('Patient', backref='reports', lazy=True)
+    template = db.relationship('ReportTemplate', backref='reports', lazy=True)
     generator = db.relationship('Admin', foreign_keys=[generated_by], backref='generated_reports', lazy=True)
     validator = db.relationship('Admin', foreign_keys=[validated_by], lazy=True)
     
@@ -71,6 +82,10 @@ class Report(db.Model, TimestampMixin):
             'validated_at': self.validated_at.isoformat() if self.validated_at else None,
             'validated_by': self.validated_by,
             'accession_number': self.accession_number,
+            'visit_id': self.visit_id,
+            'template_id': self.template_id,
+            'template_data': json.loads(self.template_data) if self.template_data else None,
+            'language': self.language,
             'image_count': self.image_count,
             'generated_by': self.generated_by,
             'notes': self.notes,

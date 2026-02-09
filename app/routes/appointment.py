@@ -297,7 +297,8 @@ def update_appointment(appointment_id):
     
     # Step 3: Update fields
     try:
-        # List of updatable fields (department removed)
+        # List of updatable fields: doctor, date, time only
+        # Notes field does not exist on Appointment model
         updatable_fields = ['doctor', 'date', 'time']
         
         for field in updatable_fields:
@@ -311,6 +312,7 @@ def update_appointment(appointment_id):
         
         # Note: Status is updated via separate endpoint
         # Note: patient_id should not be changed (create new appointment instead)
+        # Note: Notes field does not exist - not updatable
         
         db.session.commit()
         

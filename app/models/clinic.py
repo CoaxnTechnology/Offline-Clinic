@@ -19,6 +19,11 @@ class Clinic(db.Model):
     license_key = db.Column(db.String(50), unique=True, nullable=False)
     max_doctors = db.Column(db.Integer, default=1)  # 1 doctor per clinic
     
+    # PDF Branding (PDF spec §7)
+    logo_path = db.Column(db.String(500))  # Path to clinic logo image
+    header_text = db.Column(db.String(255))  # Custom header text for PDFs
+    footer_text = db.Column(db.String(255))  # Custom footer text for PDFs
+    
     # Status
     is_active = db.Column(db.Boolean, default=True)
     

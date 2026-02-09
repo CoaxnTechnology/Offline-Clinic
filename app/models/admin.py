@@ -32,6 +32,11 @@ class Admin(db.Model, TimestampMixin, UserMixin):
     reset_token = db.Column(db.String(100), nullable=True)
     reset_token_expiry = db.Column(db.DateTime, nullable=True)
     
+    # Physician digital signature (PDF spec §7) - for doctors only
+    signature_image_path = db.Column(db.String(500))  # Path to signature image
+    license_number = db.Column(db.String(50))  # Medical license number
+    qualifications = db.Column(db.String(255))  # e.g., "MD, OB/GYN Specialist"
+    
     def set_password(self, password):
         """Hash and set password"""
         self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
