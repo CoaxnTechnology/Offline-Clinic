@@ -283,43 +283,39 @@ def get_prescription(prescription_id):
 @jwt_required()
 def download_prescription_pdf(prescription_id):
     """
-    Download prescription PDF
-    
-    Returns:
-        PDF file
+    Download or preview prescription PDF.
+    Query param: inline=1 or preview=1 to open in browser/Postman (Content-Disposition: inline).
     """
     try:
         prescription = Prescription.query.get(prescription_id)
-        
         if not prescription:
-            return jsonify({
-                'success': False,
-                'error': f'Prescription with ID {prescription_id} not found'
-            }), 404
-        
-        # Resolve PDF path: support both relative (to project root) and legacy absolute paths
+            return jsonify({'success': False, 'error': f'Prescription with ID {prescription_id} not found'}), 404
+
         from app.config import Config
         pdf_path = prescription.pdf_path
         if not pdf_path:
-            return jsonify({
-                'success': False,
-                'error': 'PDF file not found. Please regenerate the prescription.'
-            }), 404
+            return jsonify({'success': False, 'error': 'PDF path not set. Regenerate the prescription.'}), 404
+
+        # Resolve full path: absolute as-is, else relative to PROJECT_ROOT then CWD
         if os.path.isabs(pdf_path):
             full_path = pdf_path
         else:
             full_path = os.path.join(Config.PROJECT_ROOT, pdf_path)
         if not os.path.exists(full_path):
+            full_path = os.path.abspath(os.path.join(os.getcwd(), pdf_path))
+        if not os.path.exists(full_path):
             return jsonify({
                 'success': False,
-                'error': 'PDF file not found. Please regenerate the prescription.'
+                'error': 'PDF file not found on server. Create the prescription on this server or copy reports/ folder.',
+                'resolved_path': full_path
             }), 404
-        
-        # Send file
+
+        # inline=1 or preview=1 → show in browser/Postman; otherwise force download
+        as_attachment = request.args.get('inline', request.args.get('preview')) not in ('1', 'true', 'yes')
         return send_file(
             full_path,
             mimetype='application/pdf',
-            as_attachment=True,
+            as_attachment=as_attachment,
             download_name=f'prescription_{prescription.patient_id}_{prescription.id}.pdf'
         )
     
