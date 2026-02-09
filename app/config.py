@@ -19,6 +19,10 @@ class Config:
         "max_overflow": 20,
     }
 
+    # Project root (backend directory) - used to resolve relative PDF paths on any server
+    _config_dir = os.path.dirname(os.path.abspath(__file__))  # app/
+    PROJECT_ROOT = os.path.dirname(_config_dir)  # backend/
+
     # DICOM Storage Paths
     DICOM_STORAGE_PATH = os.getenv("DICOM_STORAGE_PATH", "dicom_files")
     THUMBNAIL_STORAGE_PATH = os.getenv("THUMBNAIL_STORAGE_PATH", "thumbnails")

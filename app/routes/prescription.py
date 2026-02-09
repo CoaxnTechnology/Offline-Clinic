@@ -223,13 +223,15 @@ def delete_prescription(prescription_id):
                 'error': f'Prescription with ID {prescription_id} not found'
             }), 404
 
-        # Optionally remove PDF file from disk
-        if prescription.pdf_path and os.path.exists(prescription.pdf_path):
-            try:
-                os.remove(prescription.pdf_path)
-            except OSError:
-                # Ignore file delete errors, continue to delete DB record
-                pass
+        # Remove PDF file from disk (resolve relative path if needed)
+        if prescription.pdf_path:
+            from app.config import Config
+            full_path = prescription.pdf_path if os.path.isabs(prescription.pdf_path) else os.path.join(Config.PROJECT_ROOT, prescription.pdf_path)
+            if os.path.exists(full_path):
+                try:
+                    os.remove(full_path)
+                except OSError:
+                    pass
 
         db.session.delete(prescription)
         db.session.commit()
@@ -295,8 +297,19 @@ def download_prescription_pdf(prescription_id):
                 'error': f'Prescription with ID {prescription_id} not found'
             }), 404
         
-        # Check if PDF exists
-        if not prescription.pdf_path or not os.path.exists(prescription.pdf_path):
+        # Resolve PDF path: support both relative (to project root) and legacy absolute paths
+        from app.config import Config
+        pdf_path = prescription.pdf_path
+        if not pdf_path:
+            return jsonify({
+                'success': False,
+                'error': 'PDF file not found. Please regenerate the prescription.'
+            }), 404
+        if os.path.isabs(pdf_path):
+            full_path = pdf_path
+        else:
+            full_path = os.path.join(Config.PROJECT_ROOT, pdf_path)
+        if not os.path.exists(full_path):
             return jsonify({
                 'success': False,
                 'error': 'PDF file not found. Please regenerate the prescription.'
@@ -304,7 +317,7 @@ def download_prescription_pdf(prescription_id):
         
         # Send file
         return send_file(
-            prescription.pdf_path,
+            full_path,
             mimetype='application/pdf',
             as_attachment=True,
             download_name=f'prescription_{prescription.patient_id}_{prescription.id}.pdf'

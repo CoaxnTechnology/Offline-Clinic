@@ -303,18 +303,24 @@ def generate_prescription_pdf(prescription, patient=None, doctor=None, output_pa
     Returns:
         str: Path to generated PDF file
     """
-    # Create prescriptions directory if it doesn't exist
-    prescriptions_dir = os.path.join(Config.PDF_REPORTS_PATH, "prescriptions")
+    # Create prescriptions directory under project root (so path works on any server)
+    prescriptions_dir = os.path.join(Config.PROJECT_ROOT, Config.PDF_REPORTS_PATH, "prescriptions")
     os.makedirs(prescriptions_dir, exist_ok=True, mode=0o755)
     
-    # Generate output path
+    # Generate output path (absolute for writing)
     if not output_path:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         safe_patient_id = prescription.patient_id.replace('/', '_')[:20]
-        output_path = os.path.join(prescriptions_dir, f"prescription_{safe_patient_id}_{prescription.id}_{timestamp}.pdf")
+        filename = f"prescription_{safe_patient_id}_{prescription.id}_{timestamp}.pdf"
+        output_path = os.path.join(prescriptions_dir, filename)
+    else:
+        output_path = os.path.abspath(output_path)
     
-    # Ensure absolute path
-    output_path = os.path.abspath(output_path)
+    # Return path relative to project root so DB works on any environment
+    try:
+        output_path_relative = os.path.relpath(output_path, Config.PROJECT_ROOT)
+    except ValueError:
+        output_path_relative = os.path.join(Config.PDF_REPORTS_PATH, "prescriptions", os.path.basename(output_path))
     
     # Fetch patient if not provided
     if not patient:
@@ -333,15 +339,16 @@ def generate_prescription_pdf(prescription, patient=None, doctor=None, output_pa
                 stylesheets=[CSS(string=get_prescription_css())]
             )
             logger.info(f"Prescription PDF generated: {output_path}")
-            return output_path
+            return output_path_relative
         except Exception as e:
             logger.error(f"Error generating prescription PDF with WeasyPrint: {e}", exc_info=True)
-            # Fallback to placeholder
-            return generate_placeholder_prescription(output_path, prescription, patient, doctor)
+            generate_placeholder_prescription(output_path, prescription, patient, doctor)
+            return output_path_relative
     else:
         # Fallback to placeholder if WeasyPrint not available
         logger.warning("WeasyPrint not available, creating placeholder prescription")
-        return generate_placeholder_prescription(output_path, prescription, patient, doctor)
+        generate_placeholder_prescription(output_path, prescription, patient, doctor)
+        return output_path_relative
 
 
 def generate_prescription_html(prescription, patient=None, doctor=None):
