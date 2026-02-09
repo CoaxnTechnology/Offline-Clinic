@@ -31,6 +31,33 @@ def list_appointments():
     doctor = request.args.get('doctor', type=str)
     doctor_id = request.args.get('doctor_id', type=int)
     status = request.args.get('status', type=str)
+
+    # Step 1b: If current user is a doctor, default to their own appointments
+    # and show only "With Doctor" by default (doctor dashboard behaviour).
+    current_doctor_name = None
+    try:
+        from flask_jwt_extended import get_jwt_identity
+        from app.models import Admin
+        user_id = int(get_jwt_identity())
+        current_user = Admin.query.get(user_id)
+    except Exception:
+        current_user = None
+
+    if current_user and current_user.role == 'doctor':
+        # Build the same display name used when creating appointments
+        current_doctor_name = current_user.first_name or current_user.username
+        if current_user.last_name:
+            current_doctor_name = f"{current_doctor_name} {current_user.last_name}"
+
+        # If frontend did not explicitly request another status,
+        # default to showing only "With Doctor" for doctor dashboard.
+        if not status:
+            status = 'With Doctor'
+
+        # If no explicit doctor/doctor_id filter was provided,
+        # automatically filter by this doctor.
+        if not doctor and not doctor_id:
+            doctor = current_doctor_name
     
     # Step 2: Validate pagination
     if page < 1:
@@ -112,6 +139,99 @@ def list_appointments():
             'created_at': apt.created_at.isoformat()
         })
     
+    return jsonify({
+        'success': True,
+        'data': result,
+        'pagination': {
+            'page': page,
+            'limit': limit,
+            'total': total,
+            'pages': appointments.pages,
+            'has_next': appointments.has_next,
+            'has_prev': appointments.has_prev
+        },
+        'date': filter_date_obj.isoformat()
+    }), 200
+
+
+@appointment_bp.route('/with-doctor', methods=['GET'])
+@jwt_required()
+@require_role('doctor')
+def list_with_doctor_appointments_for_consultant():
+    """
+    Consultant (doctor) dashboard API.
+    Returns ONLY this doctor's appointments with status "With Doctor" for a given date (default: today).
+    
+    Query params:
+        date: YYYY-MM-DD (optional, defaults to today's date)
+        page, limit: pagination (optional, defaults: page=1, limit=20)
+    """
+    from app.models import Admin
+
+    # Get current doctor user
+    user_id = int(get_jwt_identity())
+    current_user = Admin.query.get(user_id)
+    if not current_user or current_user.role != 'doctor':
+        return jsonify({'success': False, 'error': 'Doctor not found'}), 403
+
+    # Build display name exactly as used when creating appointments
+    doctor_name = current_user.first_name or current_user.username
+    if current_user.last_name:
+        doctor_name = f"{doctor_name} {current_user.last_name}"
+
+    # Pagination and date
+    page = request.args.get('page', 1, type=int)
+    limit = request.args.get('limit', 20, type=int)
+    filter_date = request.args.get('date', type=str)  # Format: YYYY-MM-DD
+
+    if page < 1:
+        page = 1
+    if limit < 1 or limit > 100:
+        limit = 20
+
+    # Base query: this doctor, status = "With Doctor", not deleted
+    query = Appointment.query.filter(
+        Appointment.deleted_at.is_(None),
+        Appointment.doctor == doctor_name,
+        Appointment.status == 'With Doctor'
+    )
+
+    # Apply date filter (default today)
+    try:
+        if filter_date:
+            filter_date_obj = datetime.strptime(filter_date, '%Y-%m-%d').date()
+        else:
+            filter_date_obj = date.today()
+        query = query.filter(Appointment.date == filter_date_obj)
+    except ValueError:
+        return jsonify({
+            'success': False,
+            'error': 'Invalid date format. Use YYYY-MM-DD'
+        }), 400
+
+    total = query.count()
+
+    appointments = query.order_by(
+        Appointment.time.asc()
+    ).paginate(page=page, per_page=limit, error_out=False)
+
+    result = []
+    for apt in appointments.items:
+        patient = Patient.query.filter_by(id=apt.patient_id).filter(Patient.deleted_at.is_(None)).first()
+        result.append({
+            'id': apt.id,
+            'patient_id': apt.patient_id,
+            'patient': _patient_to_dict(patient) if patient else None,
+            'doctor': apt.doctor,
+            'date': apt.date.isoformat() if apt.date else None,
+            'time': apt.time,
+            'status': apt.status,
+            'accession_number': apt.accession_number,
+            'requested_procedure_id': apt.requested_procedure_id,
+            'scheduled_procedure_step_id': apt.scheduled_procedure_step_id,
+            'created_at': apt.created_at.isoformat()
+        })
+
     return jsonify({
         'success': True,
         'data': result,
