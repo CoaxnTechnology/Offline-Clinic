@@ -163,7 +163,6 @@ def list_with_doctor_appointments_for_consultant():
     Returns ONLY this doctor's appointments with status "With Doctor" for a given date (default: today).
     
     Query params:
-        date: YYYY-MM-DD (optional, defaults to today's date)
         page, limit: pagination (optional, defaults: page=1, limit=20)
     """
     from app.models import Admin
@@ -179,10 +178,9 @@ def list_with_doctor_appointments_for_consultant():
     if current_user.last_name:
         doctor_name = f"{doctor_name} {current_user.last_name}"
 
-    # Pagination and date
+    # Pagination (date is always today for consultant dashboard)
     page = request.args.get('page', 1, type=int)
     limit = request.args.get('limit', 20, type=int)
-    filter_date = request.args.get('date', type=str)  # Format: YYYY-MM-DD
 
     if page < 1:
         page = 1
@@ -196,18 +194,9 @@ def list_with_doctor_appointments_for_consultant():
         Appointment.status == 'With Doctor'
     )
 
-    # Apply date filter (default today)
-    try:
-        if filter_date:
-            filter_date_obj = datetime.strptime(filter_date, '%Y-%m-%d').date()
-        else:
-            filter_date_obj = date.today()
-        query = query.filter(Appointment.date == filter_date_obj)
-    except ValueError:
-        return jsonify({
-            'success': False,
-            'error': 'Invalid date format. Use YYYY-MM-DD'
-        }), 400
+    # Apply date filter: ALWAYS today
+    filter_date_obj = date.today()
+    query = query.filter(Appointment.date == filter_date_obj)
 
     total = query.count()
 
