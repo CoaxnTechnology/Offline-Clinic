@@ -542,7 +542,6 @@ def send_mwl_for_appointment(appointment_id):
                 'scheduled_procedure_step_id': appointment.scheduled_procedure_step_id,
                 'date': appointment.date.isoformat(),
                 'time': appointment.time,
-                'department': appointment.department,
                 'status': appointment.status,
                 'previous_status': old_status,
                 'mwl_server_status': 'running'

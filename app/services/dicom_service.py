@@ -98,7 +98,7 @@ def handle_mwl_find(event):
                 patient_name=f"{patient.first_name} {patient.last_name}",
                 patient_sex=(patient.gender or 'M')[:1],
                 accession_number=appointment.accession_number,
-                study_description=appointment.department or 'OB/GYN Ultrasound',
+                study_description='OB/GYN Ultrasound',
                 scheduled_date=appointment.date.strftime('%Y%m%d'),
                 scheduled_time=(appointment.time or '').replace(':', '')[:4] or '0900',
                 modality='US',
