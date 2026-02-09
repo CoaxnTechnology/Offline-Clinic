@@ -72,14 +72,14 @@ def list_appointments():
         error_out=False
     )
     
-    # Step 7: Format response with patient info (basic details for list)
+    # Step 7: Format response with full patient info per appointment
     result = []
     for apt in appointments.items:
-        patient = Patient.query.get(apt.patient_id)
+        patient = Patient.query.filter_by(id=apt.patient_id).filter(Patient.deleted_at.is_(None)).first()
         result.append({
             'id': apt.id,
             'patient_id': apt.patient_id,
-            'patient_name': f"{patient.first_name} {patient.last_name}" if patient else "Unknown",
+            'patient': _patient_to_dict(patient) if patient else None,
             'doctor': apt.doctor,
             'date': apt.date.isoformat() if apt.date else None,
             'time': apt.time,
@@ -102,6 +102,38 @@ def list_appointments():
             'has_prev': appointments.has_prev
         },
         'date': filter_date_obj.isoformat()
+    }), 200
+
+
+@appointment_bp.route('/<int:appointment_id>', methods=['GET'])
+@jwt_required()
+def get_appointment(appointment_id):
+    """
+    Get single appointment by ID with full patient info.
+    """
+    appointment = Appointment.query.filter(
+        Appointment.id == appointment_id,
+        Appointment.deleted_at.is_(None)
+    ).first()
+    if not appointment:
+        return jsonify({'success': False, 'error': 'Appointment not found'}), 404
+    patient = Patient.query.filter_by(id=appointment.patient_id).filter(Patient.deleted_at.is_(None)).first()
+    return jsonify({
+        'success': True,
+        'data': {
+            'id': appointment.id,
+            'patient_id': appointment.patient_id,
+            'patient': _patient_to_dict(patient) if patient else None,
+            'doctor': appointment.doctor,
+            'date': appointment.date.isoformat() if appointment.date else None,
+            'time': appointment.time,
+            'status': appointment.status,
+            'accession_number': appointment.accession_number,
+            'requested_procedure_id': appointment.requested_procedure_id,
+            'scheduled_procedure_step_id': appointment.scheduled_procedure_step_id,
+            'created_at': appointment.created_at.isoformat(),
+            'updated_at': appointment.updated_at.isoformat()
+        }
     }), 200
 
 
