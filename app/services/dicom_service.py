@@ -453,6 +453,27 @@ def start_mwl_server():
     if _mwl_server_running:
         logger.warning("MWL server is already running")
         return
+
+    # If the MWL port is already listening, assume an existing MWL server
+    # (e.g. previous process or separate listener) and don't fail startup.
+    import socket
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        if sock.connect_ex(("127.0.0.1", Config.DICOM_MWL_PORT)) == 0:
+            logger.warning(
+                "MWL port %s is already open. Assuming MWL server is running; "
+                "skipping new MWL start.", Config.DICOM_MWL_PORT
+            )
+            _mwl_server_running = True
+            return
+    except Exception as e:
+        logger.warning("MWL pre-start port check failed (continuing): %s", e)
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
     
     def _run_mwl_server():
         global _mwl_server_running
@@ -474,10 +495,15 @@ def start_mwl_server():
             )
         except OSError as e:
             if "Address already in use" in str(e):
-                logger.error(f"Port {Config.DICOM_MWL_PORT} is already in use. Another instance may be running.")
+                # Treat this as "already running" and do NOT fail startup.
+                logger.warning(
+                    "Port %s is already in use. Assuming another MWL server instance is running.",
+                    Config.DICOM_MWL_PORT,
+                )
+                _mwl_server_running = True
             else:
                 logger.error(f"MWL server error: {e}", exc_info=True)
-            _mwl_server_running = False
+                _mwl_server_running = False
         except Exception as e:
             logger.error(f"MWL server error: {e}", exc_info=True)
             _mwl_server_running = False
@@ -490,10 +516,11 @@ def start_mwl_server():
     import time
     time.sleep(0.5)
     if not _mwl_server_running:
-        raise RuntimeError(
-            "Failed to start MWL server (port %s may be in use). "
-            "Set AUTO_START_DICOM=false in CI or retry after a few seconds."
-            % Config.DICOM_MWL_PORT
+        # Do not raise here; log a warning so app can continue to run.
+        logger.warning(
+            "MWL server did not report as running after start attempt on port %s. "
+            "Check logs or start manually via /api/dicom/server/start.",
+            Config.DICOM_MWL_PORT,
         )
 
 
