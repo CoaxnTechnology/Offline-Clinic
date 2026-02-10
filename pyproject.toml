@@ -31,6 +31,7 @@ dependencies = [
     "numpy>=2.4.1",
     "flask-jwt-extended>=4.7.1",
     "reportlab>=4.0.0",
+    "flask-cors>=6.0.2",
 ]
 
 
