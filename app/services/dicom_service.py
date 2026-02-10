@@ -66,9 +66,18 @@ def handle_mwl_find(event):
     logger.info(f"MWL query from {caller_ae} - Date: {query_date}, Modality: {modality}")
 
     try:
-        # Query appointments published to MWL (have accession_number) and not deleted
+        # Query appointments published to MWL (have accession_number) and not deleted.
+        # Include all active workflow states, including Sent to DICOM and Study Completed.
+        active_statuses = [
+            'Waiting',
+            'With Doctor',
+            'With Technician',
+            'Completed',
+            'Sent to DICOM',
+            'Study Completed',
+        ]
         query = Appointment.query.filter(
-            Appointment.status.in_(['Waiting', 'With Doctor', 'With Technician', 'Completed']),
+            Appointment.status.in_(active_statuses),
             Appointment.accession_number.isnot(None),
             Appointment.deleted_at.is_(None),
         )
