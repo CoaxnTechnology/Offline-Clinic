@@ -536,7 +536,14 @@ def update_appointment_status(appointment_id):
         }), 400
     
     # Step 3: Validate status value
-    valid_statuses = ['Waiting', 'With Doctor', 'With Technician', 'Completed']
+    valid_statuses = [
+        'Waiting',
+        'With Doctor',
+        'With Technician',
+        'Sent to DICOM',
+        'Study Completed',
+        'Completed',
+    ]
     
     if new_status not in valid_statuses:
         return jsonify({
