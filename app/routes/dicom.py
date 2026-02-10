@@ -554,14 +554,13 @@ def send_mwl_for_appointment(appointment_id):
         visit.visit_status = "in_progress"
 
         # Update appointment status to indicate MWL is ready
+        # Update appointment status properly
         old_status = appointment.status
-        if appointment.status not in [
-            "Waiting",
-            "With Doctor",
-            "With Technician",
-            "Completed",
-        ]:
-            appointment.status = "Waiting"
+
+        appointment.status = "Sent to DICOM"
+        appointment.updated_at = datetime.utcnow()
+
+        db.session.commit()
 
         db.session.commit()
         from app.utils.audit import log_audit
