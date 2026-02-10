@@ -169,27 +169,38 @@ def create_app(config_name=None):
         app.register_blueprint(template_bp)
         app.register_blueprint(super_admin_bp)
         
-        # Auto-start DICOM servers if enabled (default: True)
-        auto_start_dicom = os.getenv('AUTO_START_DICOM', 'true').lower() == 'true'
+        # Auto-start DICOM servers if enabled (default: True). Skip in CI to avoid port conflicts.
+        in_ci = os.getenv('CI', '').lower() == 'true' or os.getenv('GITHUB_ACTIONS', '').lower() == 'true'
+        auto_start_dicom = not in_ci and os.getenv('AUTO_START_DICOM', 'true').lower() == 'true'
         if auto_start_dicom:
-            try:
-                from app.services.dicom_service import start_dicom_servers, get_server_status
-                logger.info("Auto-starting DICOM servers...")
-                start_dicom_servers()
-                
-                # Wait a moment and verify
-                import time
-                time.sleep(1)
-                status = get_server_status()
-                if status.get('mwl_server_running') and status.get('storage_server_running'):
-                    logger.info("✅ DICOM servers started successfully")
-                    logger.info(f"   MWL Server: Port {status.get('mwl_port')}")
-                    logger.info(f"   Storage Server: Port {status.get('storage_port')}")
-                    logger.info(f"   AE Title: {status.get('ae_title')}")
-                else:
-                    logger.warning("⚠️  DICOM servers may not have started properly. Check logs.")
-            except Exception as e:
-                logger.error(f"Failed to auto-start DICOM servers: {e}", exc_info=True)
-                logger.warning("You can start DICOM servers manually via: POST /api/dicom/server/start")
+            import time
+            from app.services.dicom_service import start_dicom_servers, get_server_status
+            max_attempts = 3
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    logger.info("Auto-starting DICOM servers%s...", f" (attempt {attempt}/{max_attempts})" if attempt > 1 else "")
+                    start_dicom_servers()
+                    time.sleep(1)
+                    status = get_server_status()
+                    if status.get('mwl_server_running') and status.get('storage_server_running'):
+                        logger.info("✅ DICOM servers started successfully")
+                        logger.info(f"   MWL Server: Port {status.get('mwl_port')}")
+                        logger.info(f"   Storage Server: Port {status.get('storage_port')}")
+                        logger.info(f"   AE Title: {status.get('ae_title')}")
+                        break
+                    else:
+                        logger.warning("⚠️  DICOM servers may not have started properly. Check logs.")
+                        break
+                except Exception as e:
+                    port_in_use = "port" in str(e).lower() or "already in use" in str(e).lower()
+                    if port_in_use and attempt < max_attempts:
+                        logger.warning("DICOM ports in use (e.g. after restart), retrying in 2s: %s", e)
+                        time.sleep(2)
+                    else:
+                        logger.error("Failed to auto-start DICOM servers: %s", e, exc_info=True)
+                        logger.warning("You can start DICOM servers manually via: POST /api/dicom/server/start")
+                        break
+        elif in_ci:
+            logger.info("Skipping DICOM auto-start (CI environment). Set AUTO_START_DICOM=true to override.")
 
     return app

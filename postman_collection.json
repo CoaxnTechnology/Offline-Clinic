@@ -653,36 +653,107 @@
           }
         },
         {
-          "name": "Create MWL Entry",
+          "name": "Send MWL (publish appointment to worklist)",
           "request": {
             "method": "POST",
             "header": [{"key": "Content-Type", "value": "application/json"}],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n    \"appointment_id\": 1\n}"
-            },
-            "url": "{{base_url}}/api/dicom/mwl"
+            "url": "{{base_url}}/api/dicom/appointments/1/send-mwl"
           }
         },
         {
-          "name": "List MWL Entries",
+          "name": "List Studies",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/dicom/mwl"
+            "url": {
+              "raw": "{{base_url}}/api/dicom/studies?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dicom", "studies"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "20"},
+                {"key": "patient_id", "value": "PAT004", "disabled": true},
+                {"key": "study_date", "value": "2026-02-09", "disabled": true},
+                {"key": "accession_number", "value": "", "disabled": true}
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Study Details",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/dicom/studies/1.2.840.113619.2.55.3.1234567890.1"
           }
         },
         {
           "name": "List DICOM Images",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/dicom/images"
+            "url": {
+              "raw": "{{base_url}}/api/dicom/images?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dicom", "images"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "20"},
+                {"key": "patient_id", "value": "", "disabled": true},
+                {"key": "study_instance_uid", "value": "", "disabled": true}
+              ]
+            }
           }
         },
         {
-          "name": "Get Patient Images",
+          "name": "Get DICOM Image",
           "request": {
             "method": "GET",
-            "url": "{{base_url}}/api/dicom/images/patient/1"
+            "url": "{{base_url}}/api/dicom/images/1"
+          }
+        },
+        {
+          "name": "Get DICOM Image File",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/dicom/images/1/file"
+          }
+        },
+        {
+          "name": "Get DICOM Image Thumbnail",
+          "request": {
+            "method": "GET",
+            "url": "{{base_url}}/api/dicom/images/1/thumbnail"
+          }
+        },
+        {
+          "name": "Get Patient Studies",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/dicom/patients/PAT004/studies?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dicom", "patients", "PAT004", "studies"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "20"}
+              ]
+            }
+          }
+        },
+        {
+          "name": "List Measurements",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/dicom/measurements?page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["api", "dicom", "measurements"],
+              "query": [
+                {"key": "page", "value": "1"},
+                {"key": "limit", "value": "20"},
+                {"key": "patient_id", "value": "", "disabled": true},
+                {"key": "study_instance_uid", "value": "", "disabled": true},
+                {"key": "measurement_type", "value": "", "disabled": true}
+              ]
+            }
           }
         }
       ]

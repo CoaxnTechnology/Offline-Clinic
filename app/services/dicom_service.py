@@ -490,7 +490,11 @@ def start_mwl_server():
     import time
     time.sleep(0.5)
     if not _mwl_server_running:
-        raise RuntimeError("Failed to start MWL server")
+        raise RuntimeError(
+            "Failed to start MWL server (port %s may be in use). "
+            "Set AUTO_START_DICOM=false in CI or retry after a few seconds."
+            % Config.DICOM_MWL_PORT
+        )
 
 
 def start_storage_server():

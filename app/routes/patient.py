@@ -148,6 +148,86 @@ def get_patient(patient_id):
     }), 200
 
 
+@patient_bp.route('/<patient_id>/history', methods=['GET'])
+@jwt_required()
+def get_patient_history(patient_id):
+    """
+    Get full history for a patient by ID.
+    
+    Includes:
+      - Patient info (full details)
+      - DICOM studies/images
+      - Prescriptions
+      - Appointments
+    """
+    # Step 1: Find patient (exclude soft-deleted)
+    patient = Patient.query.filter_by(id=patient_id).filter(Patient.deleted_at.is_(None)).first()
+    if not patient:
+        return jsonify({
+            'success': False,
+            'error': 'Patient not found'
+        }), 404
+
+    # Import related models lazily to avoid circular imports
+    from app.models import DicomImage, Prescription, Appointment
+
+    # Step 2: Build patient info
+    patient_info = _patient_to_dict(patient)
+
+    # Step 3: DICOM history (all studies/images for this patient)
+    dicom_images = (
+        DicomImage.query
+        .filter(DicomImage.patient_id == patient_id)
+        .order_by(DicomImage.study_date.desc(), DicomImage.study_time.desc().nullslast())
+        .all()
+    )
+    dicom_list = [img.to_dict() for img in dicom_images]
+
+    # Step 4: Prescription history
+    prescriptions = (
+        Prescription.query
+        .filter_by(patient_id=patient_id)
+        .order_by(Prescription.created_at.desc())
+        .all()
+    )
+    prescriptions_list = [p.to_dict() for p in prescriptions]
+
+    # Step 5: Appointment history (exclude soft-deleted)
+    appointments = (
+        Appointment.query
+        .filter(
+            Appointment.patient_id == patient_id,
+            Appointment.deleted_at.is_(None)
+        )
+        .order_by(Appointment.date.desc(), Appointment.time.asc())
+        .all()
+    )
+    appointments_list = []
+    for apt in appointments:
+        appointments_list.append({
+            'id': apt.id,
+            'date': apt.date.isoformat() if apt.date else None,
+            'time': apt.time,
+            'doctor': apt.doctor,
+            'status': apt.status,
+            'accession_number': apt.accession_number,
+            'requested_procedure_id': apt.requested_procedure_id,
+            'scheduled_procedure_step_id': apt.scheduled_procedure_step_id,
+            'created_at': apt.created_at.isoformat() if apt.created_at else None,
+            'updated_at': apt.updated_at.isoformat() if apt.updated_at else None,
+        })
+
+    return jsonify({
+        'success': True,
+        'data': {
+            'patient': patient_info,
+            'dicom': dicom_list,
+            'prescriptions': prescriptions_list,
+            'appointments': appointments_list,
+        }
+    }), 200
+
+
 @patient_bp.route('', methods=['POST'])
 @jwt_required()
 @require_role('receptionist', 'doctor')
