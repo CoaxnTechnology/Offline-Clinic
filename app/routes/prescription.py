@@ -6,7 +6,7 @@ Handles prescription creation, deletion, and PDF download
 from flask import Blueprint, request, jsonify, send_file, abort
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.extensions import db
-from app.models import Patient, Prescription, Admin
+from app.models import Patient, Prescription, Admin, Visit
 from app.utils.decorators import require_role
 from app.utils.audit import log_audit
 from app.utils.pdf_utils import generate_prescription_pdf
@@ -431,3 +431,51 @@ def get_patient_prescriptions(patient_id):
     except Exception as e:
         logger.error(f"Error getting patient prescriptions: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"An error occurred: {str(e)}"}), 500
+
+
+@prescription_bp.route("/appointment/<int:appointment_id>", methods=["GET"])
+@jwt_required()
+def get_appointment_prescription(appointment_id):
+    """
+    Get prescription for a specific appointment.
+
+    Each appointment has at most one Visit, and each Visit has at most one Prescription,
+    so this returns a single prescription (or 404 if none).
+    """
+    try:
+        # Find the Visit for this appointment
+        visit = Visit.query.filter_by(appointment_id=appointment_id, deleted_at=None).first()
+        if not visit:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": f"Visit for appointment {appointment_id} not found",
+                }
+            ), 404
+
+        # Visit → Prescription (one-to-one via backref)
+        prescription = visit.prescription
+        if not prescription:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": f"No prescription found for appointment {appointment_id}",
+                }
+            ), 404
+
+        return jsonify({"success": True, "data": prescription.to_dict()}), 200
+
+    except Exception as e:
+        logger.error(
+            f"Error getting prescription for appointment {appointment_id}: {e}",
+            exc_info=True,
+        )
+        return (
+            jsonify(
+                {
+                    "success": False,
+                    "error": f"An error occurred: {str(e)}",
+                }
+            ),
+            500,
+        )
