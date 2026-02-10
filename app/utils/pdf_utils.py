@@ -4,7 +4,7 @@ PDF Generation Utilities using WeasyPrint
 import os
 from datetime import datetime
 from app.config import Config
-from app.models import DicomImage, Patient
+from app.models import DicomImage, Patient, Clinic, Prescription
 from app.extensions import db
 import logging
 
@@ -362,9 +362,479 @@ def generate_prescription_pdf(prescription, patient=None, doctor=None, output_pa
     return output_path_relative
 
 
+def generate_patient_summary_pdf(patient, clinic=None, output_path=None, prescription=None):
+    """
+    Generate a PDF with patient details and clinic branding (name, logo, etc.).
+
+    Returns a path relative to PROJECT_ROOT, e.g. 'reports/patients/patient_PAT001.pdf'.
+    """
+    # Determine clinic (for name/logo/header/footer)
+    if clinic is None:
+        try:
+            clinic = Clinic.query.get(getattr(patient, "clinic_id", None))
+        except Exception:
+            clinic = None
+
+    # Determine latest prescription (for summary table) if not provided
+    if prescription is None:
+        try:
+            prescription = (
+                Prescription.query.filter_by(patient_id=patient.id)
+                .order_by(Prescription.created_at.desc())
+                .first()
+            )
+        except Exception:
+            prescription = None
+
+    # Create directory under reports for patient + prescription summary PDFs
+    # Use "prescriptions" in the path/name as requested.
+    summaries_dir = os.path.join(
+        Config.PROJECT_ROOT, Config.PDF_REPORTS_PATH, "prescriptions"
+    )
+    os.makedirs(summaries_dir, exist_ok=True, mode=0o755)
+
+    # Default: one stable PDF per patient we overwrite
+    if not output_path:
+        filename = f"prescription_summary_{patient.id}.pdf"
+        output_path = os.path.join(summaries_dir, filename)
+    else:
+        output_path = os.path.abspath(output_path)
+
+    # Return path relative to project root (for links)
+    try:
+        output_path_relative = os.path.relpath(output_path, Config.PROJECT_ROOT)
+    except ValueError:
+        output_path_relative = os.path.join(
+            Config.PDF_REPORTS_PATH, "patients", os.path.basename(output_path)
+        )
+
+    # Build HTML for patient summary (with optional latest prescription)
+    html_content = _generate_patient_summary_html(patient, clinic, prescription)
+
+    if WEASYPRINT_AVAILABLE:
+        try:
+            HTML(string=html_content).write_pdf(output_path)
+            logger.info(f"Patient summary PDF generated (WeasyPrint): {output_path}")
+            return output_path_relative
+        except Exception as e:
+            logger.error(
+                f"Error generating patient summary PDF with WeasyPrint: {e}",
+                exc_info=True,
+            )
+
+    if REPORTLAB_AVAILABLE:
+        try:
+            _generate_patient_summary_pdf_reportlab(output_path, patient, clinic, prescription)
+            logger.info(f"Patient summary PDF generated (ReportLab): {output_path}")
+            return output_path_relative
+        except Exception as e:
+            logger.error(
+                f"Error generating patient summary PDF with ReportLab: {e}",
+                exc_info=True,
+            )
+
+    # Fallback: minimal placeholder
+    _generate_patient_summary_placeholder(output_path, patient, clinic)
+    return output_path_relative
+
+
+def _generate_patient_summary_html(patient, clinic=None, prescription=None):
+    """HTML content for patient summary PDF with clinic branding."""
+    logo_html = ""
+    if clinic and clinic.logo_path:
+        logo_path = (
+            clinic.logo_path
+            if os.path.isabs(clinic.logo_path)
+            else os.path.join(Config.PROJECT_ROOT, clinic.logo_path)
+        )
+        if os.path.exists(logo_path):
+            logo_html = f'<img src="{logo_path}" alt="Clinic Logo" style="height:80px;margin-bottom:10px;" />'
+
+    clinic_name = clinic.name if clinic else "Clinic"
+    clinic_addr = clinic.address or ""
+    clinic_phone = clinic.phone or ""
+    clinic_email = clinic.email or ""
+
+    patient_name = f"{patient.first_name} {patient.last_name}".strip()
+    patient_id = patient.id
+    dob = patient.birth_date.strftime("%Y-%m-%d") if patient.birth_date else "N/A"
+    gender = getattr(patient, "gender", None) or "N/A"
+    phone = getattr(patient, "phone", None) or "N/A"
+    email = getattr(patient, "email", None) or "N/A"
+    height = getattr(patient, "height", None) or "N/A"
+    weight = getattr(patient, "weight", None) or "N/A"
+    blood_group = getattr(patient, "blood_group", None) or "N/A"
+    medical_history = getattr(patient, "medical_history", None) or "N/A"
+    allergies = getattr(patient, "allergies", None) or "N/A"
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>Patient Summary</title>
+        <style>
+        @page {{
+            size: A4;
+            margin: 2cm;
+        }}
+        body {{
+            font-family: Arial, sans-serif;
+            font-size: 12pt;
+            line-height: 1.6;
+            color: #333;
+        }}
+        .header {{
+            border-bottom: 3px solid #0066cc;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+        }}
+        .header h1 {{
+            color: #0066cc;
+            margin: 0;
+            font-size: 24pt;
+        }}
+        .clinic-info {{
+            font-size: 10pt;
+            color: #555;
+        }}
+        .section {{
+            margin: 20px 0;
+            page-break-inside: avoid;
+        }}
+        .section h2 {{
+            color: #0066cc;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 5px;
+            font-size: 16pt;
+        }}
+        table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+        }}
+        table td {{
+            padding: 8px;
+            border-bottom: 1px solid #ddd;
+        }}
+        table td:first-child {{
+            width: 200px;
+            font-weight: bold;
+            background-color: #f5f5f5;
+        }}
+        .section table.prescription-table {{
+            margin-top: 10px;
+        }}
+        .prescription-table thead {{
+            background-color: #0066cc;
+            color: white;
+        }}
+        .prescription-table th {{
+            padding: 8px;
+            text-align: left;
+        }}
+        .prescription-table td {{
+            padding: 8px;
+            border: 1px solid #ddd;
+        }}
+        .footer {{
+            margin-top: 30px;
+            padding-top: 10px;
+            border-top: 1px solid #ddd;
+            font-size: 10pt;
+            color: #666;
+            text-align: center;
+        }}
+        </style>
+    </head>
+    <body>
+        <div class="header">
+            {logo_html}
+            <h1>{clinic_name}</h1>
+            <div class="clinic-info">
+                <div>{clinic_addr}</div>
+                <div>{clinic_phone}</div>
+                <div>{clinic_email}</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>Patient Details</h2>
+            <table>
+                <tr><td>Patient ID</td><td>{patient_id}</td></tr>
+                <tr><td>Patient Name</td><td>{patient_name}</td></tr>
+                <tr><td>Date of Birth</td><td>{dob}</td></tr>
+                <tr><td>Gender</td><td>{gender}</td></tr>
+                <tr><td>Phone</td><td>{phone}</td></tr>
+                <tr><td>Email</td><td>{email}</td></tr>
+                <tr><td>Height</td><td>{height}</td></tr>
+                <tr><td>Weight</td><td>{weight}</td></tr>
+                <tr><td>Blood Group</td><td>{blood_group}</td></tr>
+            </table>
+        </div>
+
+        <div class="section">
+            <h2>Medical Information</h2>
+            <table>
+                <tr><td>Medical History</td><td>{medical_history}</td></tr>
+                <tr><td>Allergies</td><td>{allergies}</td></tr>
+            </table>
+        </div>
+
+        {""
+        if not prescription
+        else f"""
+        <div class="section">
+            <h2>Latest Prescription</h2>
+            <table>
+                <tr><td>Prescription ID</td><td>{prescription.id}</td></tr>
+                <tr><td>Date</td><td>{prescription.created_at.strftime('%Y-%m-%d %H:%M:%S') if prescription.created_at else 'N/A'}</td></tr>
+            </table>
+            <table class="prescription-table">
+                <thead>
+                    <tr>
+                        <th>Medicine</th>
+                        <th>Dosage</th>
+                        <th>Duration</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {''.join(
+                        f"<tr><td>{item.get('medicine', '')}</td><td>{item.get('dosage', '')}</td><td>{item.get('duration_days', '')} days</td></tr>"
+                        for item in prescription.items
+                    )}
+                </tbody>
+            </table>
+        </div>
+        """
+        }
+
+        <div class="footer">
+            <p>Patient summary generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.</p>
+        </div>
+    </body>
+    </html>
+    """
+    return html
+
+
+def _generate_patient_summary_pdf_reportlab(output_path, patient, clinic=None, prescription=None):
+    """Fallback patient summary PDF using ReportLab."""
+    doc = SimpleDocTemplate(
+        output_path,
+        pagesize=A4,
+        leftMargin=2 * cm,
+        rightMargin=2 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
+    )
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        name="PatientSummaryTitle",
+        parent=styles["Heading1"],
+        fontSize=22,
+        textColor=colors.HexColor("#0066cc"),
+        alignment=1,
+    )
+    heading_style = ParagraphStyle(
+        name="SectionHeading",
+        parent=styles["Heading2"],
+        fontSize=14,
+        textColor=colors.HexColor("#0066cc"),
+    )
+    normal = styles["Normal"]
+    story = []
+
+    clinic_name = clinic.name if clinic else "Clinic"
+    story.append(Paragraph(clinic_name, title_style))
+    story.append(Spacer(1, 6))
+    story.append(
+        Paragraph(
+            f"Patient Summary generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+            normal,
+        )
+    )
+    story.append(Spacer(1, 20))
+
+    # Patient details
+    story.append(Paragraph("Patient Details", heading_style))
+    pt_data = [
+        ["Patient ID", patient.id],
+        ["Patient Name", f"{patient.first_name} {patient.last_name}".strip()],
+        [
+            "Date of Birth",
+            patient.birth_date.strftime("%Y-%m-%d") if patient.birth_date else "N/A",
+        ],
+        ["Gender", getattr(patient, "gender", None) or "N/A"],
+        ["Phone", getattr(patient, "phone", None) or "N/A"],
+        ["Email", getattr(patient, "email", None) or "N/A"],
+        ["Height", getattr(patient, "height", None) or "N/A"],
+        ["Weight", getattr(patient, "weight", None) or "N/A"],
+        ["Blood Group", getattr(patient, "blood_group", None) or "N/A"],
+    ]
+    pt = Table(pt_data, colWidths=[5 * cm, 10 * cm])
+    pt.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f5f5f5")),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
+    story.append(pt)
+    story.append(Spacer(1, 20))
+
+    # Medical info
+    story.append(Paragraph("Medical Information", heading_style))
+    med_data = [
+        ["Medical History", getattr(patient, "medical_history", None) or "N/A"],
+        ["Allergies", getattr(patient, "allergies", None) or "N/A"],
+    ]
+    mt = Table(med_data, colWidths=[5 * cm, 10 * cm])
+    mt.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f5f5f5")),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+    story.append(mt)
+    story.append(Spacer(1, 20))
+
+    # Latest prescription (optional)
+    if prescription is not None:
+        story.append(Paragraph("Latest Prescription", heading_style))
+        presc_data = [["Medicine", "Dosage", "Duration"]]
+        for item in prescription.items:
+            med = item.get("medicine", "")
+            dos = item.get("dosage", "")
+            dur = f"{item.get('duration_days', '')} days"
+            presc_data.append([med, dos, dur])
+        pt3 = Table(presc_data, colWidths=[5 * cm, 7 * cm, 3 * cm])
+        pt3.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0066cc")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 10),
+                    ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
+        )
+        story.append(pt3)
+
+    doc.build(story)
+
+
+def _generate_patient_summary_placeholder(output_path, patient, clinic=None, prescription=None):
+    """Minimal text-based PDF placeholder for patient summary."""
+    lines = [
+        "PATIENT SUMMARY",
+        f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        "",
+        f"Patient ID: {patient.id}",
+        f"Name: {patient.first_name} {patient.last_name}",
+        f"DOB: {patient.birth_date}",
+        f"Gender: {getattr(patient, 'gender', None) or 'N/A'}",
+        f"Phone: {getattr(patient, 'phone', None) or 'N/A'}",
+        f"Email: {getattr(patient, 'email', None) or 'N/A'}",
+        "",
+        f"Medical History: {getattr(patient, 'medical_history', None) or 'N/A'}",
+        f"Allergies: {getattr(patient, 'allergies', None) or 'N/A'}",
+    ]
+
+    if prescription is not None:
+        lines.append("")
+        lines.append("Latest Prescription:")
+        for idx, item in enumerate(prescription.items, start=1):
+            lines.append(f"  Item {idx}:")
+            lines.append(f"    Medicine: {item.get('medicine', '')}")
+            lines.append(f"    Dosage: {item.get('dosage', '')}")
+            lines.append(f"    Duration: {item.get('duration_days', '')} days")
+
+    y = 750
+    content_parts = []
+    for line in lines[:40]:
+        if y < 40:
+            break
+        content_parts.append(f"BT /F1 11 Tf 50 {y} Td ({_pdf_escape(line)}) Tj ET")
+        y -= 14
+    content = "\n".join(content_parts)
+    stream_body = content.encode("utf-8")
+    stream_len = len(stream_body)
+
+    parts = []
+    parts.append(b"%PDF-1.4\n")
+    parts.append(b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n")
+    parts.append(b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n")
+    parts.append(
+        b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>\nendobj\n"
+    )
+    parts.append(f"4 0 obj\n<< /Length {stream_len} >>\nstream\n".encode())
+    parts.append(stream_body)
+    parts.append(b"\nendstream\nendobj\n")
+
+    body = b"".join(parts)
+    xref_offset = len(body)
+    offsets = [0]
+    for i in range(1, 5):
+        idx = body.find(f"{i} 0 obj".encode())
+        offsets.append(idx if idx >= 0 else 0)
+    xref = "xref\n0 5\n"
+    xref += f"{offsets[0]:010d} 65535 f \n"
+    for off in offsets[1:]:
+        xref += f"{off:010d} 00000 n \n"
+    trailer = (
+        f"trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n"
+    )
+    pdf = body + xref.encode() + trailer.encode()
+    with open(output_path, "wb") as f:
+        f.write(pdf)
+
+    logger.warning(
+        f"Placeholder patient summary (minimal PDF) created: {output_path}"
+    )
+    return output_path
+
+
 def generate_prescription_html(prescription, patient=None, doctor=None):
-    """Generate HTML content for prescription PDF"""
+    """Generate HTML content for prescription PDF (clinic-branded)."""
     
+    # Resolve clinic for logo/name/address/phone
+    clinic = None
+    try:
+        if doctor and getattr(doctor, "clinic_id", None):
+            clinic = Clinic.query.get(doctor.clinic_id)
+        elif patient and getattr(patient, "clinic_id", None):
+            clinic = Clinic.query.get(patient.clinic_id)
+    except Exception:
+        clinic = None
+
+    logo_html = ""
+    if clinic and clinic.logo_path:
+        logo_path = (
+            clinic.logo_path
+            if os.path.isabs(clinic.logo_path)
+            else os.path.join(Config.PROJECT_ROOT, clinic.logo_path)
+        )
+        if os.path.exists(logo_path):
+            logo_html = f'<img src="{logo_path}" alt="Clinic Logo" style="height:60px;margin-right:15px;" />'
+
+    clinic_name = clinic.name if clinic else "Clinic"
+    clinic_addr = clinic.address or ""
+    clinic_phone = clinic.phone or ""
+    clinic_email = clinic.email or ""
+
     patient_name = f"{patient.first_name} {patient.last_name}" if patient else "Unknown"
     patient_id = patient.id if patient else prescription.patient_id
     patient_dob = patient.birth_date.strftime('%Y-%m-%d') if patient and patient.birth_date else "N/A"
@@ -376,6 +846,7 @@ def generate_prescription_html(prescription, patient=None, doctor=None):
         patient_age = f"{age} years"
     
     doctor_name = f"Dr. {doctor.first_name} {doctor.last_name}" if doctor else "Dr. Unknown"
+    department = getattr(doctor, "qualifications", None) or "General"
 
     # Build table rows for all medicines in this prescription
     rows_html = ""
@@ -405,18 +876,34 @@ def generate_prescription_html(prescription, patient=None, doctor=None):
     </head>
     <body>
         <div class="header">
-            <h1>PRESCRIPTION</h1>
-            <p class="prescription-date">Date: {datetime.now().strftime('%d-%m-%Y')}</p>
+            <div class="clinic-block">
+                <div class="logo">{logo_html}</div>
+                <div class="clinic-text">
+                    <h1>{clinic_name}</h1>
+                    <p>{clinic_addr}</p>
+                    <p>{clinic_phone}</p>
+                    <p>{clinic_email}</p>
+                </div>
+            </div>
+            <div class="prescription-meta">
+                <p><strong>Prescription ID:</strong> {prescription.id}</p>
+                <p><strong>Date:</strong> {datetime.now().strftime('%d/%m/%Y')}</p>
+            </div>
         </div>
         
         <div class="section">
-            <h2>Patient Information</h2>
-            <table>
-                <tr><td><strong>Patient ID:</strong></td><td>{patient_id}</td></tr>
-                <tr><td><strong>Patient Name:</strong></td><td>{patient_name}</td></tr>
-                <tr><td><strong>Date of Birth:</strong></td><td>{patient_dob}</td></tr>
-                <tr><td><strong>Age:</strong></td><td>{patient_age}</td></tr>
-                <tr><td><strong>Gender:</strong></td><td>{patient_gender}</td></tr>
+            <table class="patient-doctor-table">
+                <tr>
+                    <td>
+                        <p><strong>Patient Name:</strong> {patient_name}</p>
+                        <p><strong>Patient ID:</strong> {patient_id}</p>
+                        <p><strong>Age / Gender:</strong> {patient_age or 'N/A'} / {patient_gender}</p>
+                    </td>
+                    <td>
+                        <p><strong>Doctor:</strong> {doctor_name}</p>
+                        <p><strong>Department:</strong> {department}</p>
+                    </td>
+                </tr>
             </table>
         </div>
         
@@ -427,7 +914,7 @@ def generate_prescription_html(prescription, patient=None, doctor=None):
                     <tr>
                         <th>Medicine</th>
                         <th>Dosage</th>
-                        <th>Duration</th>
+                        <th>Duration (Days)</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -437,16 +924,22 @@ def generate_prescription_html(prescription, patient=None, doctor=None):
         </div>
         
         <div class="section signature-section">
-            <div class="signature">
-                <p><strong>Prescribed by:</strong></p>
-                <p class="doctor-name">{doctor_name}</p>
-                <div class="signature-line"></div>
-            </div>
+            <table class="signature-table">
+                <tr>
+                    <td class="sig-cell">
+                        <div class="signature-line"></div>
+                        <p>Patient Signature</p>
+                    </td>
+                    <td class="sig-cell">
+                        <div class="signature-line"></div>
+                        <p>Doctor Signature</p>
+                    </td>
+                </tr>
+            </table>
         </div>
-        
+
         <div class="footer">
             <p>This is a computer-generated prescription. Please follow the dosage instructions carefully.</p>
-            <p>For any queries, please contact your healthcare provider.</p>
         </div>
     </body>
     </html>
@@ -474,20 +967,33 @@ def get_prescription_css():
         border-bottom: 3px solid #0066cc;
         padding-bottom: 10px;
         margin-bottom: 20px;
-        text-align: center;
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
     }
     
-    .header h1 {
+    .clinic-block {
+        display: flex;
+        align-items: center;
+    }
+    
+    .clinic-text h1 {
         color: #0066cc;
         margin: 0;
-        font-size: 28pt;
+        font-size: 20pt;
         font-weight: bold;
     }
     
-    .prescription-date {
-        margin: 10px 0 0 0;
-        font-size: 11pt;
-        color: #666;
+    .clinic-text p {
+        margin: 2px 0;
+        font-size: 10pt;
+        color: #555;
+    }
+    
+    .prescription-meta {
+        text-align: right;
+        font-size: 10pt;
+        color: #333;
     }
     
     .section {
@@ -519,6 +1025,18 @@ def get_prescription_css():
         width: 180px;
         font-weight: bold;
         background-color: #f5f5f5;
+    }
+    
+    .patient-doctor-table td {
+        width: 50%;
+        vertical-align: top;
+        border: none;
+        background-color: transparent;
+    }
+    
+    .patient-doctor-table p {
+        margin: 2px 0;
+        font-size: 11pt;
     }
     
     .prescription-table {
@@ -559,26 +1077,26 @@ def get_prescription_css():
     
     .signature-section {
         margin-top: 50px;
-        text-align: right;
     }
     
-    .signature {
-        display: inline-block;
-        text-align: left;
-        min-width: 250px;
+    .signature-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
     }
     
-    .doctor-name {
-        font-size: 14pt;
-        font-weight: bold;
-        margin: 10px 0;
-        color: #0066cc;
+    .signature-table .sig-cell {
+        width: 50%;
+        text-align: center;
+        border: none;
     }
     
     .signature-line {
         border-top: 2px solid #333;
         margin-top: 40px;
         width: 200px;
+        margin-left: auto;
+        margin-right: auto;
     }
     
     .footer {
