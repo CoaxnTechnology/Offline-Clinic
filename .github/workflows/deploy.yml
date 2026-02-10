@@ -42,6 +42,12 @@ jobs:
             # Load env and run migrations
             set -a
             source .env
+            
+            # Ensure DICOM auto-start is disabled in production
+            if ! grep -q "AUTO_START_DICOM" .env; then
+              echo "AUTO_START_DICOM=false" >> .env
+            fi
+            
             set +a
             flask db upgrade
             
