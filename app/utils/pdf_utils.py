@@ -829,13 +829,15 @@ def generate_prescription_html(prescription, patient=None, doctor=None):
 
     logo_html = ""
     if clinic and clinic.logo_path:
-        logo_path = (
+        logo_path_fs = (
             clinic.logo_path
             if os.path.isabs(clinic.logo_path)
             else os.path.join(Config.PROJECT_ROOT, clinic.logo_path)
         )
-        if os.path.exists(logo_path):
-            logo_html = f'<img src="{logo_path}" alt="Clinic Logo" style="height:60px;margin-right:15px;" />'
+        if os.path.exists(logo_path_fs):
+            # Use file:// URL so WeasyPrint/HTML renderer can load the local image.
+            logo_src = f"file://{logo_path_fs}"
+            logo_html = f'<img src="{logo_src}" alt="Clinic Logo" style="height:60px;margin-right:15px;" />'
 
     clinic_name = clinic.name if clinic else "Clinic"
     clinic_addr = clinic.address or ""
@@ -931,18 +933,10 @@ def generate_prescription_html(prescription, patient=None, doctor=None):
         </div>
         
         <div class="section signature-section">
-            <table class="signature-table">
-                <tr>
-                    <td class="sig-cell">
-                        <div class="signature-line"></div>
-                        <p>Patient Signature</p>
-                    </td>
-                    <td class="sig-cell">
-                        <div class="signature-line"></div>
-                        <p>Doctor Signature</p>
-                    </td>
-                </tr>
-            </table>
+            <div class="signature-single">
+                <div class="signature-line"></div>
+                <p>Doctor Signature</p>
+            </div>
         </div>
 
         <div class="footer">
