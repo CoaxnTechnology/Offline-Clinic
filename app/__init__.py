@@ -260,4 +260,9 @@ def create_app(config_name=None):
                 "Skipping DICOM auto-start (CI environment). Set AUTO_START_DICOM=true to override."
             )
 
+    # Ensure a global application context is available for background threads
+    # (e.g. DICOM MWL/C-STORE handlers) that use the Flask db session.
+    # This is safe because create_app is called once in the WSGI process.
+    app.app_context().push()
+
     return app
