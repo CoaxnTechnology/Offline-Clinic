@@ -273,6 +273,8 @@ def create_mwl_dataset(
     sps_item.ScheduledProcedureStepStartDate = scheduled_date[:8] if len(scheduled_date) >= 8 else scheduled_date
     sps_item.ScheduledProcedureStepStartTime = scheduled_time if len(scheduled_time) >= 4 else "0900"
     sps_item.Modality = modality
+    # Many devices filter on ScheduledProcedureStepStatus and expect 'SCHEDULED'
+    sps_item.ScheduledProcedureStepStatus = "SCHEDULED"
     sps_item.ScheduledPerformingPhysicianName = ""
     if scheduled_procedure_step_id:
         sps_item.ScheduledProcedureStepID = scheduled_procedure_step_id
