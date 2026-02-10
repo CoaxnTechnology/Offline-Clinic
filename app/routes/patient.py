@@ -217,6 +217,54 @@ def get_patient_history(patient_id):
             'updated_at': apt.updated_at.isoformat() if apt.updated_at else None,
         })
 
+    # Step 6: Build per-date timeline combining appointments, prescriptions, and DICOM
+    # The key is the calendar date (YYYY-MM-DD). For each date we include:
+    #   - all appointments on that date
+    #   - all prescriptions created on that date
+    #   - all DICOM studies/images with study_date equal to that date
+    timeline_by_date = {}
+
+    def _ensure_day(date_str):
+        if not date_str:
+            return None
+        if date_str not in timeline_by_date:
+            timeline_by_date[date_str] = {
+                'date': date_str,
+                'appointments': [],
+                'prescriptions': [],
+                'dicom': [],
+            }
+        return timeline_by_date[date_str]
+
+    # Appointments grouped by their appointment date
+    for apt in appointments_list:
+        day = apt.get('date')
+        day_bucket = _ensure_day(day)
+        if day_bucket is not None:
+            day_bucket['appointments'].append(apt)
+
+    # Prescriptions grouped by created_at date
+    for p in prescriptions_list:
+        created_at = p.get('created_at')
+        day = created_at.split('T')[0] if created_at else None
+        day_bucket = _ensure_day(day)
+        if day_bucket is not None:
+            day_bucket['prescriptions'].append(p)
+
+    # DICOM grouped by study_date
+    for img in dicom_list:
+        study_date = img.get('study_date')
+        day_bucket = _ensure_day(study_date)
+        if day_bucket is not None:
+            day_bucket['dicom'].append(img)
+
+    # Convert timeline dict to sorted list (newest date first)
+    timeline = sorted(
+        timeline_by_date.values(),
+        key=lambda d: d['date'],
+        reverse=True,
+    )
+
     return jsonify({
         'success': True,
         'data': {
@@ -224,6 +272,8 @@ def get_patient_history(patient_id):
             'dicom': dicom_list,
             'prescriptions': prescriptions_list,
             'appointments': appointments_list,
+            # Combined per-day history: each entry has date, appointments, prescriptions, dicom.
+            'timeline': timeline,
         }
     }), 200
 

@@ -531,6 +531,28 @@ def start_storage_server():
     if _storage_server_running:
         logger.warning("Storage server is already running")
         return
+
+    # If the storage port is already listening, assume an existing Storage server
+    # and don't fail startup.
+    import socket
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        if sock.connect_ex(("127.0.0.1", Config.DICOM_STORAGE_PORT)) == 0:
+            logger.warning(
+                "Storage port %s is already open. Assuming Storage server is running; "
+                "skipping new Storage start.",
+                Config.DICOM_STORAGE_PORT,
+            )
+            _storage_server_running = True
+            return
+    except Exception as e:
+        logger.warning("Storage pre-start port check failed (continuing): %s", e)
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
     
     def _run_storage_server():
         global _storage_server_running
@@ -564,10 +586,15 @@ def start_storage_server():
             )
         except OSError as e:
             if "Address already in use" in str(e):
-                logger.error(f"Port {Config.DICOM_STORAGE_PORT} is already in use. Another instance may be running.")
+                # Treat this as "already running" and do NOT fail startup.
+                logger.warning(
+                    "Port %s is already in use. Assuming another Storage server instance is running.",
+                    Config.DICOM_STORAGE_PORT,
+                )
+                _storage_server_running = True
             else:
                 logger.error(f"Storage server error: {e}", exc_info=True)
-            _storage_server_running = False
+                _storage_server_running = False
         except Exception as e:
             logger.error(f"Storage server error: {e}", exc_info=True)
             _storage_server_running = False
@@ -580,7 +607,12 @@ def start_storage_server():
     import time
     time.sleep(0.5)
     if not _storage_server_running:
-        raise RuntimeError("Failed to start Storage server")
+        # Do not raise here; log a warning so app can continue to run.
+        logger.warning(
+            "Storage server did not report as running after start attempt on port %s. "
+            "Check logs or start manually via /api/dicom/server/start.",
+            Config.DICOM_STORAGE_PORT,
+        )
 
 
 def start_dicom_servers():

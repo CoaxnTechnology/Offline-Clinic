@@ -80,6 +80,16 @@ class Prescription(db.Model, TimestampMixin):
 
     def to_dict(self):
         """Convert to dictionary for API responses."""
+        # Expose pdf_path as a web path (relative URL) pointing to the PDF file,
+        # not as an internal filesystem path or API download endpoint.
+        # Example value: "/reports/prescriptions/prescription_PAT004_11_20260210_063914.pdf"
+        if self.pdf_path:
+            if self.pdf_path.startswith("/"):
+                web_path = self.pdf_path
+            else:
+                web_path = f"/{self.pdf_path}"
+        else:
+            web_path = None
         return {
             "id": self.id,
             "patient_id": self.patient_id,
@@ -89,14 +99,9 @@ class Prescription(db.Model, TimestampMixin):
             "duration_days": self.duration_days,
             "notes": self.notes or "",
             "items": self.items,
-            "pdf_path": self.pdf_path,
-            # Direct browser URL (append your base URL in front)
-            # Example: http://localhost:5000/api/prescriptions/1/download?inline=1
-            "pdf_url": (
-                f"/api/prescriptions/{self.id}/download?inline=1"
-                if self.pdf_path
-                else None
-            ),
+            # Browser-linkable path; prefix with your server, e.g.
+            # http://SERVER + pdf_path
+            "pdf_path": web_path,
             "created_by": self.created_by,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
