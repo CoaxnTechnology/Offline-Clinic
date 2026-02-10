@@ -25,10 +25,16 @@ jobs:
             cd /opt/Offline-Clinic
             
             echo "Deploying DEV branch..."
-            
-            git fetch origin
-            git checkout dev
-            git reset --hard origin/dev
+            # Try to update code from GitHub, but don't hard-fail if the server
+            # cannot reach github.com (common on restricted hosting).
+            if ping -c1 github.com >/dev/null 2>&1; then
+              echo "github.com reachable from server. Updating repo from origin..."
+              git fetch origin || echo "WARNING: git fetch origin failed, using existing code"
+              git checkout dev || echo "WARNING: git checkout dev failed, keeping current branch"
+              git reset --hard origin/dev || echo "WARNING: git reset failed, continuing with existing code"
+            else
+              echo "WARNING: github.com not reachable from server. Skipping git fetch/reset (using existing code)."
+            fi
             
             source venv/bin/activate
             pip install -r requirements.txt --quiet
