@@ -2,6 +2,7 @@ from app.extensions import db
 from .base import TimestampMixin
 from datetime import datetime
 import json
+from app.config import Config
 
 
 class Prescription(db.Model, TimestampMixin):
@@ -80,9 +81,9 @@ class Prescription(db.Model, TimestampMixin):
 
     def to_dict(self):
         """Convert to dictionary for API responses."""
-        # Expose pdf_path as a web path (relative URL) pointing to the PDF file,
-        # not as an internal filesystem path or API download endpoint.
-        # Example value: "/reports/prescriptions/prescription_PAT004_11_20260210_063914.pdf"
+        # Expose pdf_path as a web path pointing to the PDF file.
+        # If PUBLIC_BASE_URL is set, we return a full absolute URL.
+        # Example value: "http://129-121-75-225/reports/prescriptions/prescription_PAT004_11_20260210_063914.pdf"
         if self.pdf_path:
             if self.pdf_path.startswith("/"):
                 web_path = self.pdf_path
@@ -90,6 +91,12 @@ class Prescription(db.Model, TimestampMixin):
                 web_path = f"/{self.pdf_path}"
         else:
             web_path = None
+
+        if web_path and Config.PUBLIC_BASE_URL:
+            base = Config.PUBLIC_BASE_URL.rstrip("/")
+            full_path = f"{base}{web_path}"
+        else:
+            full_path = web_path
         return {
             "id": self.id,
             "patient_id": self.patient_id,
@@ -99,9 +106,8 @@ class Prescription(db.Model, TimestampMixin):
             "duration_days": self.duration_days,
             "notes": self.notes or "",
             "items": self.items,
-            # Browser-linkable path; prefix with your server, e.g.
-            # http://SERVER + pdf_path
-            "pdf_path": web_path,
+            # Browser-linkable full URL, e.g. http://SERVER/reports/...
+            "pdf_path": full_path,
             "created_by": self.created_by,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

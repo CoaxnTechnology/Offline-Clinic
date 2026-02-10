@@ -28,6 +28,10 @@ class Config:
     THUMBNAIL_STORAGE_PATH = os.getenv("THUMBNAIL_STORAGE_PATH", "thumbnails")
     PDF_REPORTS_PATH = os.getenv("PDF_REPORTS_PATH", "reports")
 
+    # Public base URL (used to build absolute links in API responses)
+    # Example: http://129-121-75-225
+    PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
+
     # DICOM Server Configuration
     DICOM_MWL_PORT = int(os.getenv("DICOM_MWL_PORT", "11112"))
     DICOM_STORAGE_PORT = int(os.getenv("DICOM_STORAGE_PORT", "11113"))
