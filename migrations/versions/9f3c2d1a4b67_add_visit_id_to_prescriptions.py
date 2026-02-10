@@ -11,7 +11,9 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = "9f3c2d1a4b67"
-down_revision = "51c270f32e2b"
+# Chain this after the current main head so we don't create a new branch.
+# Previous head is 72409bc776e5 -> a1b2c3d4e5f6, so we depend on a1b2c3d4e5f6.
+down_revision = "a1b2c3d4e5f6"
 branch_labels = None
 depends_on = None
 
