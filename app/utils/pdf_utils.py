@@ -581,10 +581,20 @@ def _generate_patient_summary_html(patient, clinic=None, prescription=None):
                 <tr><td>Allergies</td><td>{allergies}</td></tr>
             </table>
         </div>
+    """
 
-        {""
-        if not prescription
-        else f"""
+    # Append latest prescription section if available
+    if prescription is not None:
+        rows = []
+        for item in prescription.items:
+            med = item.get("medicine", "")
+            dos = item.get("dosage", "")
+            dur = item.get("duration_days", "")
+            rows.append(
+                f"<tr><td>{med}</td><td>{dos}</td><td>{dur} days</td></tr>"
+            )
+        rows_html = "".join(rows)
+        html += f"""
         <div class="section">
             <h2>Latest Prescription</h2>
             <table>
@@ -600,16 +610,13 @@ def _generate_patient_summary_html(patient, clinic=None, prescription=None):
                     </tr>
                 </thead>
                 <tbody>
-                    {''.join(
-                        f"<tr><td>{item.get('medicine', '')}</td><td>{item.get('dosage', '')}</td><td>{item.get('duration_days', '')} days</td></tr>"
-                        for item in prescription.items
-                    )}
+                    {rows_html}
                 </tbody>
             </table>
         </div>
         """
-        }
 
+    html += f"""
         <div class="footer">
             <p>Patient summary generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.</p>
         </div>
