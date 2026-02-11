@@ -254,10 +254,10 @@ def create_clinic_user(clinic_id):
         db.session.add(user)
         db.session.commit()
         
-        # Create set password link (frontend URL)
+        # Create reset password link (frontend URL)
         from app.config import Config
         base_url = Config.PUBLIC_BASE_URL or "http://localhost:8080"
-        set_password_link = f"{base_url.rstrip('/')}/set-password?token={token}"
+        set_password_link = f"{base_url.rstrip('/')}/reset-password?token={token}"
         
         # Send welcome email with set password link
         email_sent = send_welcome_email(
