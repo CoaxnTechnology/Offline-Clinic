@@ -219,7 +219,7 @@ def create_app(config_name=None):
                         "Auto-starting DICOM servers%s...",
                         f" (attempt {attempt}/{max_attempts})" if attempt > 1 else "",
                     )
-                    start_dicom_servers()
+                    start_dicom_servers(app)
                     time.sleep(1)
                     status = get_server_status()
                     if status.get("mwl_server_running") and status.get(
@@ -260,9 +260,13 @@ def create_app(config_name=None):
                 "Skipping DICOM auto-start (CI environment). Set AUTO_START_DICOM=true to override."
             )
 
-    # Ensure a global application context is available for background threads
-    # (e.g. DICOM MWL/C-STORE handlers) that use the Flask db session.
-    # This is safe because create_app is called once in the WSGI process.
+    # Ensure DICOM background threads (MWL/C-STORE) can use the DB: give them the app
+    # so they can run inside app.app_context(). Safe because create_app runs once per process.
+    try:
+        from app.services import dicom_service
+        dicom_service._flask_app = app
+    except Exception:
+        pass
     app.app_context().push()
 
     return app

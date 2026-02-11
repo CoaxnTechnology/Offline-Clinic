@@ -554,13 +554,9 @@ def send_mwl_for_appointment(appointment_id):
         visit.visit_status = "in_progress"
 
         # Update appointment status to indicate MWL is ready
-        # Update appointment status properly
         old_status = appointment.status
-
         appointment.status = "Sent to DICOM"
         appointment.updated_at = datetime.utcnow()
-
-        db.session.commit()
 
         db.session.commit()
         from app.utils.audit import log_audit
@@ -602,8 +598,13 @@ def send_mwl_for_appointment(appointment_id):
             f"Failed to send MWL for appointment {appointment_id}: {e}", exc_info=True
         )
         db.session.rollback()
-        error_msg = "Failed to send MWL" if not current_app.debug else str(e)
-        return jsonify({"success": False, "error": error_msg}), 500
+        error_msg = "Failed to send MWL"
+        detail = str(e)
+        return jsonify({
+            "success": False,
+            "error": error_msg,
+            "detail": detail,
+        }), 500
 
 
 @dicom_bp.route("/measurements", methods=["GET"])
@@ -758,8 +759,9 @@ def start_servers():
                 }
             ), 200
 
-        # Start servers
-        start_dicom_servers()
+        # Start servers (pass app so MWL handler has app context in background thread)
+        from flask import current_app
+        start_dicom_servers(current_app._get_current_object())
 
         # Wait a moment for servers to initialize
         import time
@@ -813,8 +815,9 @@ def diagnose_servers():
         test_result = {}
         try:
             from app.services.dicom_service import start_dicom_servers
+            from flask import current_app
 
-            start_dicom_servers()
+            start_dicom_servers(current_app._get_current_object())
             test_result["start_test"] = "SUCCESS"
             # Get status after start
             status_after = get_server_status()

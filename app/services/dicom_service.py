@@ -33,6 +33,8 @@ logger = logging.getLogger(__name__)
 
 # Global variables for DICOM servers
 _mwl_server_thread = None
+# Flask app reference so MWL/C-STORE handlers can run DB code inside app_context()
+_flask_app = None
 _storage_server_thread = None
 _mpps_server_thread = None
 _mwl_server_running = False
@@ -65,7 +67,7 @@ def handle_mwl_find(event):
     caller_ae = event.assoc.requestor.ae_title if hasattr(event, 'assoc') else 'unknown'
     logger.info(f"MWL query from {caller_ae} - Date: {query_date}, Modality: {modality}")
 
-    try:
+    def _run_query():
         # Query appointments published to MWL (have accession_number) and not deleted.
         # Include all active workflow states, including Sent to DICOM and Study Completed.
         active_statuses = [
@@ -81,7 +83,6 @@ def handle_mwl_find(event):
             Appointment.accession_number.isnot(None),
             Appointment.deleted_at.is_(None),
         )
-        
         # Filter by date if provided
         if query_date:
             query_date_str = str(query_date)
@@ -91,15 +92,12 @@ def handle_mwl_find(event):
                     query = query.filter(Appointment.date == appt_date)
                 except ValueError:
                     pass
-        
         appointments = query.all()
-        
         # Filter by modality if provided
         if modality and modality != 'US':
-            # For now, only return US (Ultrasound) studies
             appointments = []
-        
-        # Generate MWL datasets for each appointment (PDF spec §4)
+        # Build MWL datasets
+        results = []
         for appointment in appointments:
             patient = Patient.query.get(appointment.patient_id)
             if not patient or patient.deleted_at:
@@ -118,10 +116,19 @@ def handle_mwl_find(event):
                 requested_procedure_id=appointment.requested_procedure_id or '',
                 scheduled_procedure_step_id=appointment.scheduled_procedure_step_id or '',
             )
+            results.append(ds)
+        return results
+
+    try:
+        global _flask_app
+        if _flask_app is not None:
+            with _flask_app.app_context():
+                results = _run_query()
+        else:
+            results = _run_query()
+        for ds in results:
             yield 0xFF00, ds
-        
         yield 0x0000, None
-    
     except Exception as e:
         logger.error(f"Error in MWL find handler: {e}", exc_info=True)
         yield 0xC000, None
@@ -624,8 +631,11 @@ def start_storage_server():
         )
 
 
-def start_dicom_servers():
-    """Start MWL, Storage, and MPPS servers"""
+def start_dicom_servers(app=None):
+    """Start MWL, Storage, and MPPS servers. Pass Flask app so MWL handler can use DB inside app_context()."""
+    global _flask_app
+    if app is not None:
+        _flask_app = app
     start_mwl_server()
     start_storage_server()
     start_mpps_server()  # Optional but recommended
