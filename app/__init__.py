@@ -85,25 +85,54 @@ def create_app(config_name=None):
         return jsonify({"success": False, "error": f"An error occurred: {str(e)}"}), 500
 
     # Setup logging
-    if not app.debug:
-        import logging
-        from logging.handlers import RotatingFileHandler
+    from logging.handlers import RotatingFileHandler
 
-        if not os.path.exists("logs"):
-            os.mkdir("logs")
+    try:
+        # Ensure logs directory exists
+        logs_dir = "logs"
+        if not os.path.exists(logs_dir):
+            os.makedirs(logs_dir, exist_ok=True)
 
-        file_handler = RotatingFileHandler(
-            "logs/app.log", maxBytes=10240000, backupCount=10
+        # Dedicated DICOM log file (always enabled for debugging)
+        dicom_logger = logging.getLogger("dicom")
+        # Remove existing handlers to avoid duplicates on reload
+        dicom_logger.handlers = [h for h in dicom_logger.handlers if not isinstance(h, RotatingFileHandler)]
+        
+        dicom_log_path = os.path.join(logs_dir, "dicom.log")
+        dicom_file_handler = RotatingFileHandler(
+            dicom_log_path, maxBytes=10240000, backupCount=10
         )
-        file_handler.setFormatter(
+        dicom_file_handler.setFormatter(
             logging.Formatter(
-                "%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]"
+                "%(asctime)s %(levelname)s: [DICOM] %(message)s [in %(pathname)s:%(lineno)d]"
             )
         )
-        file_handler.setLevel(logging.INFO)
-        app.logger.addHandler(file_handler)
-        app.logger.setLevel(logging.INFO)
-        app.logger.info("Application startup")
+        dicom_file_handler.setLevel(logging.INFO)
+        dicom_logger.addHandler(dicom_file_handler)
+        dicom_logger.setLevel(logging.INFO)
+        dicom_logger.propagate = False  # Don't propagate to root logger to avoid duplicates
+        dicom_logger.info("DICOM logging initialized - log file: %s", dicom_log_path)
+    except Exception as e:
+        # Logging setup failure shouldn't crash the app
+        logger.warning(f"Failed to setup DICOM logging: {e}", exc_info=True)
+
+    # Main application log file (only in production/non-debug)
+    if not app.debug:
+        try:
+            file_handler = RotatingFileHandler(
+                "logs/app.log", maxBytes=10240000, backupCount=10
+            )
+            file_handler.setFormatter(
+                logging.Formatter(
+                    "%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]"
+                )
+            )
+            file_handler.setLevel(logging.INFO)
+            app.logger.addHandler(file_handler)
+            app.logger.setLevel(logging.INFO)
+            app.logger.info("Application startup")
+        except Exception as e:
+            logger.warning(f"Failed to setup application file logging: {e}", exc_info=True)
 
     # Production: Set max content length for file uploads
     app.config["MAX_CONTENT_LENGTH"] = app.config.get(

@@ -29,7 +29,8 @@ from app.utils.dicom_utils import (
 )
 import json
 
-logger = logging.getLogger(__name__)
+# Use dedicated DICOM logger for all DICOM-related operations
+logger = logging.getLogger("dicom")
 
 # Global variables for DICOM servers
 _mwl_server_thread = None

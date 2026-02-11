@@ -14,7 +14,8 @@ from PIL import Image
 from pydicom import Dataset
 from pydicom.uid import generate_uid
 
-logger = logging.getLogger(__name__)
+# Use dedicated DICOM logger for all DICOM-related operations
+logger = logging.getLogger("dicom")
 
 
 def generate_thumbnail(ds: Dataset, max_size: tuple = (200, 200)) -> Optional[str]:
