@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import (
     create_access_token,
     create_refresh_token,
@@ -9,6 +9,9 @@ from flask_jwt_extended import (
 from app.models import Admin
 from app.extensions import db
 from datetime import datetime, timedelta   # if not already imported
+import secrets
+
+from app.services.email_service import send_password_reset_email
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
@@ -168,3 +171,145 @@ def refresh():
             'success': False,
             'error': 'Could not refresh token'
         }), 401
+
+
+@auth_bp.route('/forgot-password', methods=['POST'])
+def forgot_password():
+    """
+    Step 1: Request password reset.
+    Body: { "email": "user@example.com" }
+    Always returns success (does not leak whether email exists).
+    """
+    data = request.get_json() or {}
+    email = data.get('email')
+    if not email:
+        return jsonify({
+            'success': False,
+            'error': 'Field "email" is required'
+        }), 400
+
+    admin = Admin.query.filter_by(email=email).first()
+    if not admin:
+        # Do not reveal existence; pretend email sent
+        return jsonify({
+            'success': True,
+            'message': 'If this email exists, a reset link has been sent.'
+        }), 200
+
+    # Generate token valid for 1 hour
+    token = secrets.token_urlsafe(32)
+    admin.reset_token = token
+    admin.reset_token_expiry = datetime.utcnow() + timedelta(hours=1)
+    db.session.commit()
+
+    # Build reset link for frontend
+    base_url = current_app.config.get('PUBLIC_BASE_URL') or 'http://localhost:5173'
+    reset_link = f"{base_url.rstrip('/')}/reset-password?token={token}"
+
+    send_password_reset_email(
+        email=admin.email,
+        reset_link=reset_link,
+        user_name=f"{admin.first_name} {admin.last_name}".strip() or admin.username,
+    )
+
+    return jsonify({
+        'success': True,
+        'message': 'If this email exists, a reset link has been sent.'
+    }), 200
+
+
+@auth_bp.route('/verify-reset-token', methods=['POST'])
+def verify_reset_token():
+    """
+    Step 2 (optional): Verify reset token.
+    Body: { "token": "<token_from_email>" }
+    """
+    data = request.get_json() or {}
+    token = data.get('token')
+    if not token:
+        return jsonify({
+            'success': False,
+            'error': 'Field "token" is required'
+        }), 400
+
+    admin = Admin.query.filter_by(reset_token=token).first()
+    if not admin or not admin.reset_token_expiry or admin.reset_token_expiry < datetime.utcnow():
+        return jsonify({
+            'success': False,
+            'error': 'Invalid or expired token'
+        }), 400
+
+    return jsonify({
+        'success': True,
+        'message': 'Token is valid'
+    }), 200
+
+
+@auth_bp.route('/reset-password', methods=['POST'])
+def reset_password():
+    """
+    Step 3: Reset password using token.
+    Body: { "token": "<token_from_email>", "new_password": "newpassword123" }
+    """
+    data = request.get_json() or {}
+    token = data.get('token')
+    new_password = data.get('new_password')
+
+    if not token or not new_password:
+        return jsonify({
+            'success': False,
+            'error': 'Fields "token" and "new_password" are required'
+        }), 400
+
+    admin = Admin.query.filter_by(reset_token=token).first()
+    if not admin or not admin.reset_token_expiry or admin.reset_token_expiry < datetime.utcnow():
+        return jsonify({
+            'success': False,
+            'error': 'Invalid or expired token'
+        }), 400
+
+    # Set new password and clear token
+    admin.set_password(new_password)
+    admin.reset_token = None
+    admin.reset_token_expiry = None
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': 'Password has been reset successfully'
+    }), 200
+
+
+@auth_bp.route('/set-password', methods=['POST'])
+def set_password():
+    """
+    First-time password setup (welcome email).
+    Body: { "token": "<token_from_welcome_email>", "password": "mypassword123" }
+    """
+    data = request.get_json() or {}
+    token = data.get('token')
+    password = data.get('password')
+
+    if not token or not password:
+        return jsonify({
+            'success': False,
+            'error': 'Fields "token" and "password" are required'
+        }), 400
+
+    admin = Admin.query.filter_by(reset_token=token).first()
+    if not admin or not admin.reset_token_expiry or admin.reset_token_expiry < datetime.utcnow():
+        return jsonify({
+            'success': False,
+            'error': 'Invalid or expired token'
+        }), 400
+
+    admin.set_password(password)
+    admin.reset_token = None
+    admin.reset_token_expiry = None
+    admin.is_active = True
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': 'Password set successfully. You can now log in.'
+    }), 200
