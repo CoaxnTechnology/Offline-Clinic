@@ -202,9 +202,9 @@ def forgot_password():
     admin.reset_token_expiry = datetime.utcnow() + timedelta(hours=1)
     db.session.commit()
 
-    # Build reset link for frontend
-    base_url = current_app.config.get('PUBLIC_BASE_URL') or 'http://localhost:5173'
-    reset_link = f"{base_url.rstrip('/')}/reset-password?token={token}"
+    # Build reset link for frontend (path param style: /reset-password/<token>)
+    base_url = current_app.config.get('PUBLIC_BASE_URL') or 'http://localhost:8080'
+    reset_link = f"{base_url.rstrip('/')}/reset-password/{token}"
 
     send_password_reset_email(
         email=admin.email,
