@@ -32,6 +32,12 @@ import json
 # Use dedicated DICOM logger for all DICOM-related operations
 logger = logging.getLogger("dicom")
 
+# Optional low-level DICOM protocol debugging (association, C-STORE, etc.).
+# Enable by setting DICOM_DEBUG_LOG=true in the environment.
+if os.getenv("DICOM_DEBUG_LOG", "false").lower() == "true":
+    debug_logger()
+    logger.info("pynetdicom debug_logger() enabled (DICOM_DEBUG_LOG=true)")
+
 # Global variables for DICOM servers
 _mwl_server_thread = None
 # Flask app reference so MWL/C-STORE handlers can run DB code inside app_context()
