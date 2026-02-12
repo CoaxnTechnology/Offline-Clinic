@@ -141,10 +141,26 @@ def get_patient(patient_id):
             'error': 'Patient not found'
         }), 404
     
-    # Step 3: Return patient data (empty fields as N/A)
+    # Step 3: Build base patient data (empty fields as N/A)
+    data = _patient_to_dict(patient)
+
+    # Step 4: Attach latest prescription id for this patient (if any)
+    try:
+        from app.models import Prescription
+
+        latest_rx = (
+            Prescription.query.filter_by(patient_id=patient_id)
+            .order_by(Prescription.created_at.desc())
+            .first()
+        )
+        data["latest_prescription_id"] = latest_rx.id if latest_rx else None
+    except Exception:
+        # If anything goes wrong, don't break the endpoint
+        data["latest_prescription_id"] = None
+
     return jsonify({
         'success': True,
-        'data': _patient_to_dict(patient)
+        'data': data
     }), 200
 
 
