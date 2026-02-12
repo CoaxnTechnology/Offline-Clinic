@@ -190,7 +190,7 @@ def list_with_doctor_appointments_for_consultant():
     query = Appointment.query.filter(
         Appointment.deleted_at.is_(None),
         Appointment.doctor == doctor_name,
-        Appointment.status == 'With Doctor'
+        Appointment.status == 'Completed'
     )
 
     # Apply date filter: ALWAYS today
