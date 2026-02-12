@@ -174,7 +174,6 @@ def list_with_doctor_appointments_for_consultant():
 
     # Build display name exactly as used when creating appointments
     doctor_name = current_user.first_name or current_user.username
-    print(doctor_name)
     if current_user.last_name:
         doctor_name = f"{doctor_name} {current_user.last_name}"
 
@@ -188,18 +187,13 @@ def list_with_doctor_appointments_for_consultant():
         limit = 20
 
     # Base query: this doctor, status = "With Doctor", not deleted
+    filter_date_obj = date.today()
     query = Appointment.query.filter(
         Appointment.deleted_at.is_(None),
         Appointment.doctor == doctor_name,
-        Appointment.status == 'Completed',
-        Appointment.date == date.today()
+        Appointment.status == 'With Doctor',
+        Appointment.date == filter_date_obj
     )
-    print(query)
-    
-
-    # Apply date filter: ALWAYS today
-    filter_date_obj = date.today()
-    query = query.filter(Appointment.date == filter_date_obj)
 
     total = query.count()
 
