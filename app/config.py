@@ -38,8 +38,9 @@ class Config:
     FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", os.getenv("PUBLIC_BASE_URL", "http://localhost:8080"))
 
     # DICOM Server Configuration
-    DICOM_MWL_PORT = int(os.getenv("DICOM_MWL_PORT", "11112"))
-    DICOM_STORAGE_PORT = int(os.getenv("DICOM_STORAGE_PORT", "11113"))
+    # Defaults match your current machine setup: MWL=21102, Storage=21103
+    DICOM_MWL_PORT = int(os.getenv("DICOM_MWL_PORT", "21102"))
+    DICOM_STORAGE_PORT = int(os.getenv("DICOM_STORAGE_PORT", "21103"))
     DICOM_AE_TITLE = os.getenv("DICOM_AE_TITLE", "STORESCP")
 
     # DICOM Production Settings
