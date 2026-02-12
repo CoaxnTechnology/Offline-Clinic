@@ -160,11 +160,12 @@ def list_with_doctor_appointments_for_consultant():
     """
     Consultant (doctor) dashboard API.
     Returns ONLY this doctor's appointments with status "With Doctor" for a given date (default: today).
-    
+    Also attaches latest prescription info (id + pdf link) for each patient.
+
     Query params:
         page, limit: pagination (optional, defaults: page=1, limit=20)
     """
-    from app.models import Admin
+    from app.models import Admin, Prescription
 
     # Get current doctor user
     user_id = int(get_jwt_identity())
@@ -203,20 +204,38 @@ def list_with_doctor_appointments_for_consultant():
 
     result = []
     for apt in appointments.items:
-        patient = Patient.query.filter_by(id=apt.patient_id).filter(Patient.deleted_at.is_(None)).first()
-        result.append({
-            'id': apt.id,
-            'patient_id': apt.patient_id,
-            'patient': _patient_to_dict(patient) if patient else None,
-            'doctor': apt.doctor,
-            'date': apt.date.isoformat() if apt.date else None,
-            'time': apt.time,
-            'status': apt.status,
-            'accession_number': apt.accession_number,
-            'requested_procedure_id': apt.requested_procedure_id,
-            'scheduled_procedure_step_id': apt.scheduled_procedure_step_id,
-            'created_at': apt.created_at.isoformat()
-        })
+        patient = (
+            Patient.query.filter_by(id=apt.patient_id)
+            .filter(Patient.deleted_at.is_(None))
+            .first()
+        )
+
+        # Latest prescription for this patient (most recent created_at)
+        latest_rx = (
+            Prescription.query.filter_by(patient_id=apt.patient_id)
+            .order_by(Prescription.created_at.desc())
+            .first()
+        )
+        rx_dict = latest_rx.to_dict() if latest_rx else None
+
+        result.append(
+            {
+                "id": apt.id,
+                "patient_id": apt.patient_id,
+                "patient": _patient_to_dict(patient) if patient else None,
+                "doctor": apt.doctor,
+                "date": apt.date.isoformat() if apt.date else None,
+                "time": apt.time,
+                "status": apt.status,
+                "accession_number": apt.accession_number,
+                "requested_procedure_id": apt.requested_procedure_id,
+                "scheduled_procedure_step_id": apt.scheduled_procedure_step_id,
+                "created_at": apt.created_at.isoformat(),
+                # Prescription info for doctor dashboard
+                "prescription_id": rx_dict["id"] if rx_dict else None,
+                "prescription_pdf_path": rx_dict["pdf_path"] if rx_dict else None,
+            }
+        )
 
     return jsonify({
         'success': True,
