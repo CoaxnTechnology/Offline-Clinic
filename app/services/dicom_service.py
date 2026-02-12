@@ -195,13 +195,13 @@ def handle_store(event):
     except Exception as e:
         logger.warning(f"Could not check storage quota: {e}")
     
-    # Production: Check for duplicate (avoid reprocessing)
-    existing_image = DicomImage.query.filter_by(sop_instance_uid=sop_uid).first()
-    if existing_image:
-        logger.info(f"Duplicate DICOM image received: {sop_uid} (already exists)")
-        return 0x0000  # Success - already stored
-    
-    try:
+    def _store():
+        # Production: Check for duplicate (avoid reprocessing)
+        existing_image = DicomImage.query.filter_by(sop_instance_uid=sop_uid).first()
+        if existing_image:
+            logger.info(f"Duplicate DICOM image received: {sop_uid} (already exists)")
+            return 0x0000  # Success - already stored
+
         logger.info(f"Received DICOM image: {sop_uid} from {caller_ae} ({caller_ip})")
         
         # Extract metadata
@@ -283,13 +283,16 @@ def handle_store(event):
             db.session.add(measurement)
         
         db.session.commit()
-        
+
         processing_time = time.time() - start_time
-        logger.info(f"Successfully stored DICOM image: {sop_uid} for patient {patient_id} (took {processing_time:.2f}s)")
-        
+        logger.info(
+            f"Successfully stored DICOM image: {sop_uid} for patient {patient_id} (took {processing_time:.2f}s)"
+        )
+
         # Production: Trigger background processing if Celery available
         try:
             from tasks.dicom_tasks import process_dicom_image
+
             if image.id:
                 process_dicom_image.delay(image.id)
                 logger.debug(f"Queued background processing for image {image.id}")
@@ -297,22 +300,35 @@ def handle_store(event):
             logger.debug("Celery not available, skipping background processing")
         except Exception as e:
             logger.warning(f"Failed to queue background processing: {e}")
-        
+
         return 0x0000
-    
+
+    try:
+        global _flask_app
+        if _flask_app is not None:
+            with _flask_app.app_context():
+                return _store()
+        else:
+            # Fallback: run without explicit app_context (may fail if DB needs it)
+            return _store()
     except Exception as e:
         logger.error(f"Error storing DICOM image {sop_uid}: {e}", exc_info=True)
-        db.session.rollback()
-        
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+
         # Production: Cleanup failed file if created
         try:
-            if 'dicom_file_path' in locals() and os.path.exists(dicom_file_path):
+            if "dicom_file_path" in locals() and os.path.exists(dicom_file_path):
                 os.remove(dicom_file_path)
-            if 'thumbnail_path' in locals() and thumbnail_path and os.path.exists(thumbnail_path):
+            if "thumbnail_path" in locals() and thumbnail_path and os.path.exists(
+                thumbnail_path
+            ):
                 os.remove(thumbnail_path)
         except Exception as cleanup_error:
             logger.error(f"Failed to cleanup files: {cleanup_error}")
-        
+
         return 0xC001  # Processing failure
 
 
