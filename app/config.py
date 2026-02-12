@@ -28,9 +28,14 @@ class Config:
     THUMBNAIL_STORAGE_PATH = os.getenv("THUMBNAIL_STORAGE_PATH", "thumbnails")
     PDF_REPORTS_PATH = os.getenv("PDF_REPORTS_PATH", "reports")
 
-    # Public base URL (used to build absolute links in API responses)
-    # Example: http://129-121-75-225
+    # Public base URL (used to build absolute links for backend-hosted assets like PDFs)
+    # Example: http://129.121.75.225
     PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
+
+    # Frontend base URL (used for links that should open in the web app,
+    # like reset-password / set-password pages)
+    # Example: http://localhost:8080 or https://app.yourclinic.com
+    FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", os.getenv("PUBLIC_BASE_URL", "http://localhost:8080"))
 
     # DICOM Server Configuration
     DICOM_MWL_PORT = int(os.getenv("DICOM_MWL_PORT", "11112"))

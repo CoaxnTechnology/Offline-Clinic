@@ -87,7 +87,9 @@ def create_user():
     clinic = Clinic.query.get(clinic_id) if clinic_id else None
     clinic_name = clinic.name if clinic else None
 
-    base_url = Config.PUBLIC_BASE_URL or "http://localhost:8080"
+    # Use FRONTEND_BASE_URL for set-password/reset-password links so it can point to the web app,
+    # independent of PUBLIC_BASE_URL (used for PDFs and other backend URLs).
+    base_url = Config.FRONTEND_BASE_URL or Config.PUBLIC_BASE_URL or "http://localhost:8080"
     reset_link = f"{base_url.rstrip('/')}/reset-password/{token}"
 
     send_welcome_email(

@@ -203,7 +203,9 @@ def forgot_password():
     db.session.commit()
 
     # Build reset link for frontend (path param style: /reset-password/<token>)
-    base_url = current_app.config.get('PUBLIC_BASE_URL') or 'http://localhost:8080'
+    # Use FRONTEND_BASE_URL so it can be different from PUBLIC_BASE_URL (which is used for PDFs).
+    from app.config import Config
+    base_url = current_app.config.get('FRONTEND_BASE_URL') or Config.FRONTEND_BASE_URL
     reset_link = f"{base_url.rstrip('/')}/reset-password/{token}"
 
     send_password_reset_email(
