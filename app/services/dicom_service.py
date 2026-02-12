@@ -337,45 +337,69 @@ def handle_mpps_create(event):
     Handle MPPS N-CREATE (exam started)
     Updates Visit status to 'in_progress' and Appointment status
     """
-    try:
+    def _handle():
         ds = event.request.AttributeList
         if not ds:
             logger.warning("MPPS N-CREATE received with no dataset")
             return 0xC000, None
-        
+
         # Extract identifiers
-        accession_number = getattr(ds, 'AccessionNumber', None)
-        study_instance_uid = getattr(ds, 'ReferencedStudySequence', [{}])[0].get('ReferencedSOPInstanceUID', None) if hasattr(ds, 'ReferencedStudySequence') else None
-        scheduled_procedure_step_id = getattr(ds, 'ScheduledProcedureStepID', None)
-        
-        logger.info(f"MPPS N-CREATE: Exam started - Accession: {accession_number}, StudyUID: {study_instance_uid}")
-        
+        accession_number = getattr(ds, "AccessionNumber", None)
+        study_instance_uid = (
+            getattr(ds, "ReferencedStudySequence", [{}])[0].get(
+                "ReferencedSOPInstanceUID", None
+            )
+            if hasattr(ds, "ReferencedStudySequence")
+            else None
+        )
+        scheduled_procedure_step_id = getattr(ds, "ScheduledProcedureStepID", None)
+
+        logger.info(
+            f"MPPS N-CREATE: Exam started - Accession: {accession_number}, StudyUID: {study_instance_uid}"
+        )
+
         # Find Visit by AccessionNumber
         from app.models import Visit
+
         visit = None
         if accession_number:
-            visit = Visit.query.filter_by(accession_number=accession_number, deleted_at=None).first()
-        
+            visit = Visit.query.filter_by(
+                accession_number=accession_number, deleted_at=None
+            ).first()
+
         if visit:
-            visit.visit_status = 'in_progress'
+            visit.visit_status = "in_progress"
             visit.study_instance_uid = study_instance_uid
-            
+
             # Update Appointment status
-            if visit.appointment:
-                if visit.appointment.status == 'Waiting':
-                    visit.appointment.status = 'With Technician'
-            
+            if visit.appointment and visit.appointment.status == "Waiting":
+                visit.appointment.status = "With Technician"
+
             db.session.commit()
-            logger.info(f"Updated Visit {visit.id} status to 'in_progress' via MPPS")
+            logger.info(
+                f"Updated Visit {visit.id} status to 'in_progress' via MPPS"
+            )
         else:
-            logger.warning(f"MPPS N-CREATE: Visit not found for AccessionNumber: {accession_number}")
-        
+            logger.warning(
+                f"MPPS N-CREATE: Visit not found for AccessionNumber: {accession_number}"
+            )
+
         # Return success
         return 0x0000, None
-    
+
+    try:
+        global _flask_app
+        if _flask_app is not None:
+            with _flask_app.app_context():
+                return _handle()
+        else:
+            return _handle()
     except Exception as e:
         logger.error(f"Error handling MPPS N-CREATE: {e}", exc_info=True)
-        db.session.rollback()
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         return 0xC001, None
 
 
@@ -384,50 +408,79 @@ def handle_mpps_set(event):
     Handle MPPS N-SET (exam status update, e.g., completed)
     Updates Visit status to 'completed' and Appointment status
     """
-    try:
+    def _handle():
         ds = event.request.AttributeList
         if not ds:
             logger.warning("MPPS N-SET received with no dataset")
             return 0xC000, None
-        
+
         # Extract identifiers
-        accession_number = getattr(ds, 'AccessionNumber', None)
-        procedure_step_status = getattr(ds, 'PerformedProcedureStepStatus', None)
-        study_instance_uid = getattr(ds, 'ReferencedStudySequence', [{}])[0].get('ReferencedSOPInstanceUID', None) if hasattr(ds, 'ReferencedStudySequence') else None
-        
-        logger.info(f"MPPS N-SET: Status update - Accession: {accession_number}, Status: {procedure_step_status}")
-        
+        accession_number = getattr(ds, "AccessionNumber", None)
+        procedure_step_status = getattr(ds, "PerformedProcedureStepStatus", None)
+        study_instance_uid = (
+            getattr(ds, "ReferencedStudySequence", [{}])[0].get(
+                "ReferencedSOPInstanceUID", None
+            )
+            if hasattr(ds, "ReferencedStudySequence")
+            else None
+        )
+
+        logger.info(
+            f"MPPS N-SET: Status update - Accession: {accession_number}, Status: {procedure_step_status}"
+        )
+
         # Find Visit by AccessionNumber
         from app.models import Visit
+
         visit = None
         if accession_number:
-            visit = Visit.query.filter_by(accession_number=accession_number, deleted_at=None).first()
-        
+            visit = Visit.query.filter_by(
+                accession_number=accession_number, deleted_at=None
+            ).first()
+
         if visit:
             # Update Visit status based on MPPS status
-            if procedure_step_status == 'COMPLETED':
-                visit.visit_status = 'completed'
-                visit.study_instance_uid = study_instance_uid or visit.study_instance_uid
-                
+            if procedure_step_status == "COMPLETED":
+                visit.visit_status = "completed"
+                visit.study_instance_uid = (
+                    study_instance_uid or visit.study_instance_uid
+                )
+
                 # Update Appointment status
                 if visit.appointment:
-                    visit.appointment.status = 'Completed'
-                
+                    visit.appointment.status = "Completed"
+
                 db.session.commit()
-                logger.info(f"Updated Visit {visit.id} status to 'completed' via MPPS")
-            elif procedure_step_status == 'DISCONTINUED':
-                visit.visit_status = 'cancelled'
+                logger.info(
+                    f"Updated Visit {visit.id} status to 'completed' via MPPS"
+                )
+            elif procedure_step_status == "DISCONTINUED":
+                visit.visit_status = "cancelled"
                 db.session.commit()
-                logger.info(f"Updated Visit {visit.id} status to 'cancelled' via MPPS")
+                logger.info(
+                    f"Updated Visit {visit.id} status to 'cancelled' via MPPS"
+                )
         else:
-            logger.warning(f"MPPS N-SET: Visit not found for AccessionNumber: {accession_number}")
-        
+            logger.warning(
+                f"MPPS N-SET: Visit not found for AccessionNumber: {accession_number}"
+            )
+
         # Return success
         return 0x0000, None
-    
+
+    try:
+        global _flask_app
+        if _flask_app is not None:
+            with _flask_app.app_context():
+                return _handle()
+        else:
+            return _handle()
     except Exception as e:
         logger.error(f"Error handling MPPS N-SET: {e}", exc_info=True)
-        db.session.rollback()
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
         return 0xC001, None
 
 
