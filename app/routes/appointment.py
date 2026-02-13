@@ -49,10 +49,10 @@ def list_appointments():
             current_doctor_name = f"{current_doctor_name} {current_user.last_name}"
 
         # If frontend did not explicitly request another status,
-        # default to showing active statuses for doctor dashboard.
-        # Completed appointments are removed from dashboard by default.
+        # default to showing all statuses for doctor dashboard.
+        # Appointments stay visible until doctor explicitly sets "Completed".
         if not status:
-            status = "With Doctor,Sent to DICOM"
+            status = "With Doctor,Sent to DICOM,Study Completed,Completed"
 
         # If no explicit doctor/doctor_id filter was provided,
         # automatically filter by this doctor.
@@ -200,12 +200,12 @@ def list_with_doctor_appointments_for_consultant():
     if limit < 1 or limit > 100:
         limit = 20
 
-    # Base query: this doctor, active statuses (exclude completed), not deleted
+    # Base query: this doctor, all statuses except Completed, not deleted
     filter_date_obj = date.today()
     query = Appointment.query.filter(
         Appointment.deleted_at.is_(None),
         Appointment.doctor == doctor_name,
-        Appointment.status.in_(["With Doctor", "Sent to DICOM"]),
+        Appointment.status != "Completed",
         Appointment.date == filter_date_obj,
     )
 
