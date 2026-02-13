@@ -168,20 +168,40 @@ def handle_store(event):
     ds.file_meta = event.file_meta
     sop_uid = ds.SOPInstanceUID
 
-    # Production: Validate SOP Instance UID
-    if not sop_uid or len(sop_uid) > 255:
-        logger.error(f"Invalid SOP Instance UID: {sop_uid}")
-        return 0xC001  # Processing failure
-
-    # Production: Get caller information for logging
+    # Detailed logging for debugging machine issues
     caller_ae = "unknown"
     caller_ip = "unknown"
+    caller_port = "unknown"
     try:
         if hasattr(event, "assoc") and event.assoc:
             caller_ae = getattr(event.assoc.requestor, "ae_title", "unknown")
             caller_ip = getattr(event.assoc.requestor, "address", "unknown")
-    except:
-        pass
+            caller_port = getattr(event.assoc.requestor, "port", "unknown")
+            logger.info(
+                f"🔌 DICOM Connection: AE={caller_ae}, IP={caller_ip}, Port={caller_port}"
+            )
+    except Exception as e:
+        logger.warning(f"Could not get caller info: {e}")
+
+    # Log all incoming DICOM tags for debugging
+    try:
+        patient_id = getattr(ds, "PatientID", "N/A")
+        patient_name = str(getattr(ds, "PatientName", "N/A"))
+        study_uid = getattr(ds, "StudyInstanceUID", "N/A")
+        accession = getattr(ds, "AccessionNumber", "N/A")
+        modality = getattr(ds, "Modality", "N/A")
+
+        logger.info(f"📥 DICOM Receive Start: SOPUID={sop_uid}")
+        logger.info(f"   Patient: {patient_id} ({patient_name})")
+        logger.info(f"   StudyUID: {study_uid}")
+        logger.info(f"   Accession: {accession}, Modality: {modality}")
+    except Exception as e:
+        logger.warning(f"Could not extract DICOM metadata: {e}")
+
+    # Production: Validate SOP Instance UID
+    if not sop_uid or len(sop_uid) > 255:
+        logger.error(f"Invalid SOP Instance UID: {sop_uid}")
+        return 0xC001  # Processing failure
 
     # Production: Check file size limit
     try:
@@ -243,6 +263,7 @@ def handle_store(event):
         # Fallback: use today if StudyDate is missing to avoid NOT NULL DB constraint violation
         if study_date is None:
             from datetime import date as date_type
+
             study_date = date_type.today()
             logger.warning(f"Missing StudyDate in DICOM {sop_uid}, defaulting to today")
 
@@ -278,7 +299,9 @@ def handle_store(event):
                 patient = Patient.query.get(dicom_patient_id)
                 if patient:
                     patient_id = patient.id
-                    logger.info(f"Linked DICOM image to patient {patient_id} via PatientID tag")
+                    logger.info(
+                        f"Linked DICOM image to patient {patient_id} via PatientID tag"
+                    )
                 else:
                     logger.warning(
                         f"DICOM PatientID '{dicom_patient_id}' not found in DB - storing without patient link"
@@ -367,11 +390,14 @@ def handle_store(event):
             # Fallback: run without explicit app_context (may fail if DB needs it)
             return _store()
     except Exception as e:
-        logger.error(f"Error storing DICOM image {sop_uid}: {e}", exc_info=True)
+        logger.error(f"❌ ERROR storing DICOM image {sop_uid}: {e}", exc_info=True)
+        logger.error(f"   Caller: {caller_ae} ({caller_ip})")
+        logger.error(f"   SOP UID: {sop_uid}")
         try:
             db.session.rollback()
-        except Exception:
-            pass
+            logger.error(f"   DB rollback: OK")
+        except Exception as rb_err:
+            logger.error(f"   DB rollback failed: {rb_err}")
 
         # Production: Cleanup failed file if created
         try:
@@ -755,23 +781,39 @@ def start_storage_server():
 
             # Ultrasound
             ae.add_supported_context("1.2.840.10008.5.1.4.1.1.6.1", ts)  # US Image
-            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.3.1", ts)  # US Multi-frame
+            ae.add_supported_context(
+                "1.2.840.10008.5.1.4.1.1.3.1", ts
+            )  # US Multi-frame
             # Secondary Capture (Samsung machines send screenshots/reports as SC)
-            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.7", ts)   # SC Image
-            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.7.1", ts) # Multi-frame SC Byte
-            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.7.2", ts) # Multi-frame SC Word
-            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.7.3", ts) # Multi-frame SC True Color
-            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.7.4", ts) # Multi-frame SC True Color
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.7", ts)  # SC Image
+            ae.add_supported_context(
+                "1.2.840.10008.5.1.4.1.1.7.1", ts
+            )  # Multi-frame SC Byte
+            ae.add_supported_context(
+                "1.2.840.10008.5.1.4.1.1.7.2", ts
+            )  # Multi-frame SC Word
+            ae.add_supported_context(
+                "1.2.840.10008.5.1.4.1.1.7.3", ts
+            )  # Multi-frame SC True Color
+            ae.add_supported_context(
+                "1.2.840.10008.5.1.4.1.1.7.4", ts
+            )  # Multi-frame SC True Color
             # CT / MR / X-Ray (accept all common modalities)
-            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.2", ts)   # CT Image
-            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.4", ts)   # MR Image
-            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.1", ts)   # CR Image
-            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.1.1", ts) # Digital X-Ray
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.2", ts)  # CT Image
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.4", ts)  # MR Image
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.1", ts)  # CR Image
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.1.1", ts)  # Digital X-Ray
             # Structured Report (Samsung sends SR with measurements)
-            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.88.11", ts)  # Basic Text SR
+            ae.add_supported_context(
+                "1.2.840.10008.5.1.4.1.1.88.11", ts
+            )  # Basic Text SR
             ae.add_supported_context("1.2.840.10008.5.1.4.1.1.88.22", ts)  # Enhanced SR
-            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.88.33", ts)  # Comprehensive SR
-            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.88.34", ts)  # Comprehensive 3D SR
+            ae.add_supported_context(
+                "1.2.840.10008.5.1.4.1.1.88.33", ts
+            )  # Comprehensive SR
+            ae.add_supported_context(
+                "1.2.840.10008.5.1.4.1.1.88.34", ts
+            )  # Comprehensive 3D SR
             # Verification
             ae.add_supported_context(Verification, ts)
 
