@@ -536,6 +536,29 @@ def start_mpps_server():
         logger.warning("MPPS server is already running")
         return
 
+    # Pre-check: if the MPPS port is already listening, skip starting a new server
+    import socket
+
+    mpps_port = Config.DICOM_MWL_PORT + 2
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        if sock.connect_ex(("127.0.0.1", mpps_port)) == 0:
+            logger.warning(
+                "MPPS port %s is already open. Assuming MPPS server is running; "
+                "skipping new MPPS start.",
+                mpps_port,
+            )
+            _mpps_server_running = True
+            return
+    except Exception as e:
+        logger.warning("MPPS pre-start port check failed (continuing): %s", e)
+    finally:
+        try:
+            sock.close()
+        except Exception:
+            pass
+
     def _run_mpps_server():
         global _mpps_server_running
         try:
@@ -563,10 +586,14 @@ def start_mpps_server():
             )
         except OSError as e:
             if "Address already in use" in str(e):
-                logger.error(f"MPPS port {mpps_port} is already in use.")
+                logger.warning(
+                    "Port %s is already in use. Assuming another MPPS server instance is running.",
+                    mpps_port,
+                )
+                _mpps_server_running = True
             else:
                 logger.error(f"MPPS server error: {e}", exc_info=True)
-            _mpps_server_running = False
+                _mpps_server_running = False
         except Exception as e:
             logger.error(f"MPPS server error: {e}", exc_info=True)
             _mpps_server_running = False
@@ -717,13 +744,26 @@ def start_storage_server():
                 "1.2.840.10008.1.2.2",  # Explicit VR Big Endian
             ]
 
-            # Ultrasound Single-frame and Multi-frame
-            ae.add_supported_context(
-                "1.2.840.10008.5.1.4.1.1.6.1", ts
-            )  # US Single-frame
-            ae.add_supported_context(
-                "1.2.840.10008.5.1.4.1.1.3.1", ts
-            )  # US Multi-frame
+            # Ultrasound
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.6.1", ts)  # US Image
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.3.1", ts)  # US Multi-frame
+            # Secondary Capture (Samsung machines send screenshots/reports as SC)
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.7", ts)   # SC Image
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.7.1", ts) # Multi-frame SC Byte
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.7.2", ts) # Multi-frame SC Word
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.7.3", ts) # Multi-frame SC True Color
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.7.4", ts) # Multi-frame SC True Color
+            # CT / MR / X-Ray (accept all common modalities)
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.2", ts)   # CT Image
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.4", ts)   # MR Image
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.1", ts)   # CR Image
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.1.1", ts) # Digital X-Ray
+            # Structured Report (Samsung sends SR with measurements)
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.88.11", ts)  # Basic Text SR
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.88.22", ts)  # Enhanced SR
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.88.33", ts)  # Comprehensive SR
+            ae.add_supported_context("1.2.840.10008.5.1.4.1.1.88.34", ts)  # Comprehensive 3D SR
+            # Verification
             ae.add_supported_context(Verification, ts)
 
             # Production: Bind to all interfaces for remote access
