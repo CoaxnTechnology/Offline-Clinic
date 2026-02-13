@@ -1307,49 +1307,56 @@ def get_study_by_appointment(appointment_id):
     except Exception as e:
         logger.error(f"Error getting study by appointment: {e}", exc_info=True)
 
-        # Check what went wrong for better error message
+        # Try to get more info about what's happening
         try:
-            appointment_exists = Appointment.query.get(appointment_id) is not None
-            visit_exists = (
-                Visit.query.filter_by(appointment_id=appointment_id).first() is not None
-                if appointment_exists
-                else False
-            )
-            visit = (
-                Visit.query.filter_by(appointment_id=appointment_id).first()
-                if appointment_exists
-                else None
-            )
-            has_accession = visit.accession_number is not None if visit else False
-            has_images = (
-                DicomImage.query.filter_by(appointment_id=appointment_id).count() > 0
-                if appointment_exists
-                else False
-            )
+            appointment = Appointment.query.get(appointment_id)
+            if not appointment:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": f"Appointment {appointment_id} not found",
+                    }
+                ), 404
 
-            error_details = {
-                "appointment_exists": appointment_exists,
-                "visit_exists": visit_exists,
-                "has_accession_number": has_accession,
-                "has_dicom_images": has_images,
-                "appointment_id": appointment_id,
-            }
-            logger.error(f"Study lookup debug: {error_details}")
+            visit = Visit.query.filter_by(appointment_id=appointment_id).first()
+            if not visit:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": f"No visit found for appointment {appointment_id}",
+                    }
+                ), 404
 
-            if not appointment_exists:
-                error_msg = f"Appointment {appointment_id} not found"
-            elif not visit_exists:
-                error_msg = f"No visit found for appointment {appointment_id}"
-            elif not has_accession:
-                error_msg = f"No accession number for appointment {appointment_id}"
-            elif not has_images:
-                error_msg = f"No DICOM images received for appointment {appointment_id}"
-            else:
-                error_msg = "Failed to get study"
+            if not visit.accession_number:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": f"No accession number for appointment {appointment_id}",
+                    }
+                ), 404
+
+            # Check using appointment_id directly
+            images = DicomImage.query.filter_by(appointment_id=appointment_id).all()
+            if not images:
+                # Try via accession
+                images = DicomImage.query.filter_by(
+                    accession_number=visit.accession_number
+                ).all()
+
+            if not images:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": f"No DICOM images for appointment {appointment_id}",
+                    }
+                ), 404
+
+            return jsonify({"success": False, "error": "Failed to get study"}), 500
+
         except Exception as debug_e:
-            error_msg = f"Failed to get study: {str(e)}"
-
-        return jsonify({"success": False, "error": error_msg}), 500
+            logger.error(f"Debug error: {debug_e}")
+            error_msg = str(e) if current_app.debug else "Failed to get study"
+            return jsonify({"success": False, "error": error_msg}), 500
 
 
 @dicom_bp.route("/appointments/<int:appointment_id>/images", methods=["GET"])
