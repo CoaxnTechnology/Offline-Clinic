@@ -1156,7 +1156,7 @@ def get_study_full(study_instance_uid):
                     },
                     "patient": {
                         "id": patient.id if patient else None,
-                        "patient_id": patient.patient_id
+                        "patient_id": patient.id
                         if patient
                         else dicom_patient_id,
                         "first_name": patient.first_name if patient else None,
@@ -1205,7 +1205,7 @@ def get_study_full(study_instance_uid):
                     "_meta": {
                         "patient_link_verified": patient_link_verified,
                         "dicom_patient_id": dicom_patient_id,
-                        "linked_patient_id": patient.patient_id if patient else None,
+                        "linked_patient_id": patient.id if patient else None,
                     },
                 },
             }
@@ -1258,7 +1258,7 @@ def get_study_by_appointment(appointment_id):
         dicom_patient_id = (
             str(study_image.patient_id) if study_image.patient_id else None
         )
-        appointment_patient_id = str(patient.patient_id)
+        appointment_patient_id = str(patient.id)
 
         if dicom_patient_id and dicom_patient_id != appointment_patient_id:
             logger.error(
@@ -1284,7 +1284,7 @@ def get_study_by_appointment(appointment_id):
                     "modality": study_image.modality,
                     "patient": {
                         "id": patient.id,
-                        "patient_id": patient.patient_id,
+                        "patient_id": patient.id,
                         "name": f"{patient.first_name} {patient.last_name}",
                     },
                     "appointment": {
@@ -1406,7 +1406,7 @@ def get_images_by_appointment(appointment_id):
             if img.patient_id:
                 dicom_patient_ids.add(str(img.patient_id))
 
-        appointment_patient_id = str(patient.patient_id)
+        appointment_patient_id = str(patient.id)
 
         patient_link_verified = (
             not dicom_patient_ids or appointment_patient_id in dicom_patient_ids
@@ -1453,11 +1453,11 @@ def get_images_by_appointment(appointment_id):
                         else None,
                         "time": appointment.time,
                         "status": appointment.status,
-                        "patient_id": patient.patient_id,
+                        "patient_id": patient.id,
                     },
                     "patient": {
                         "id": patient.id,
-                        "patient_id": patient.patient_id,
+                        "patient_id": patient.id,
                         "name": f"{patient.first_name} {patient.last_name}",
                     },
                     "visit": {
