@@ -1,6 +1,7 @@
 """
 DICOM Service for handling MWL queries, C-STORE operations, and DICOM data management
 """
+
 import os
 import logging
 import threading
@@ -15,17 +16,18 @@ from pydicom.uid import (
     generate_uid,
     ImplicitVRLittleEndian,
     ExplicitVRLittleEndian,
-    JPEGBaseline8Bit
+    JPEGBaseline8Bit,
 )
 
 from app.extensions import db
 from app.config import Config
-from app.models import (
-    Patient, Appointment, DicomImage, DicomMeasurement
-)
+from app.models import Patient, Appointment, DicomImage, DicomMeasurement
 from app.utils.dicom_utils import (
-    extract_dicom_metadata, save_dicom_file, save_thumbnail_file,
-    parse_date, create_mwl_dataset
+    extract_dicom_metadata,
+    save_dicom_file,
+    save_thumbnail_file,
+    parse_date,
+    create_mwl_dataset,
 )
 import json
 
@@ -52,7 +54,7 @@ _mpps_server_running = False
 def handle_mwl_find(event):
     """
     Handle C-FIND request for Modality Worklist
-    
+
     This function is called when a DICOM device queries for worklist items
     Production-ready with logging and validation
     """
@@ -63,27 +65,32 @@ def handle_mwl_find(event):
         return
 
     # Extract query parameters
-    query_date = getattr(identifier, 'ScheduledProcedureStepStartDate', None)
+    query_date = getattr(identifier, "ScheduledProcedureStepStartDate", None)
     modality = None
-    
-    if hasattr(identifier, 'ScheduledProcedureStepSequence') and len(identifier.ScheduledProcedureStepSequence) > 0:
+
+    if (
+        hasattr(identifier, "ScheduledProcedureStepSequence")
+        and len(identifier.ScheduledProcedureStepSequence) > 0
+    ):
         sps = identifier.ScheduledProcedureStepSequence[0]
-        modality = getattr(sps, 'Modality', None)
-    
+        modality = getattr(sps, "Modality", None)
+
     # Production: Log MWL query
-    caller_ae = event.assoc.requestor.ae_title if hasattr(event, 'assoc') else 'unknown'
-    logger.info(f"MWL query from {caller_ae} - Date: {query_date}, Modality: {modality}")
+    caller_ae = event.assoc.requestor.ae_title if hasattr(event, "assoc") else "unknown"
+    logger.info(
+        f"MWL query from {caller_ae} - Date: {query_date}, Modality: {modality}"
+    )
 
     def _run_query():
         # Query appointments published to MWL (have accession_number) and not deleted.
         # Include all active workflow states, including Sent to DICOM and Study Completed.
         active_statuses = [
-            'Waiting',
-            'With Doctor',
-            'With Technician',
-            'Completed',
-            'Sent to DICOM',
-            'Study Completed',
+            "Waiting",
+            "With Doctor",
+            "With Technician",
+            "Completed",
+            "Sent to DICOM",
+            "Study Completed",
         ]
         query = Appointment.query.filter(
             Appointment.status.in_(active_statuses),
@@ -95,13 +102,13 @@ def handle_mwl_find(event):
             query_date_str = str(query_date)
             if len(query_date_str) >= 8:
                 try:
-                    appt_date = datetime.strptime(query_date_str[:8], '%Y%m%d').date()
+                    appt_date = datetime.strptime(query_date_str[:8], "%Y%m%d").date()
                     query = query.filter(Appointment.date == appt_date)
                 except ValueError:
                     pass
         appointments = query.all()
         # Filter by modality if provided
-        if modality and modality != 'US':
+        if modality and modality != "US":
             appointments = []
         # Build MWL datasets
         results = []
@@ -109,19 +116,24 @@ def handle_mwl_find(event):
             patient = Patient.query.get(appointment.patient_id)
             if not patient or patient.deleted_at:
                 continue
-            birth_str = patient.birth_date.strftime('%Y%m%d') if getattr(patient, 'birth_date', None) and patient.birth_date else ''
+            birth_str = (
+                patient.birth_date.strftime("%Y%m%d")
+                if getattr(patient, "birth_date", None) and patient.birth_date
+                else ""
+            )
             ds = create_mwl_dataset(
                 patient_id=patient.id,
                 patient_name=f"{patient.first_name} {patient.last_name}",
-                patient_sex=(patient.gender or 'M')[:1],
+                patient_sex=(patient.gender or "M")[:1],
                 accession_number=appointment.accession_number,
-                study_description='OB/GYN Ultrasound',
-                scheduled_date=appointment.date.strftime('%Y%m%d'),
-                scheduled_time=(appointment.time or '').replace(':', '')[:4] or '0900',
-                modality='US',
+                study_description="OB/GYN Ultrasound",
+                scheduled_date=appointment.date.strftime("%Y%m%d"),
+                scheduled_time=(appointment.time or "").replace(":", "")[:4] or "0900",
+                modality="US",
                 patient_birth_date=birth_str,
-                requested_procedure_id=appointment.requested_procedure_id or '',
-                scheduled_procedure_step_id=appointment.scheduled_procedure_step_id or '',
+                requested_procedure_id=appointment.requested_procedure_id or "",
+                scheduled_procedure_step_id=appointment.scheduled_procedure_step_id
+                or "",
             )
             results.append(ds)
         return results
@@ -144,57 +156,63 @@ def handle_mwl_find(event):
 def handle_store(event):
     """
     Handle C-STORE request for receiving DICOM images
-    
+
     This function is called when a DICOM device sends an image
     Production-ready with proper error handling, validation, and logging
     """
     import time
+
     start_time = time.time()
-    
+
     ds = event.dataset
     ds.file_meta = event.file_meta
     sop_uid = ds.SOPInstanceUID
-    
+
     # Production: Validate SOP Instance UID
     if not sop_uid or len(sop_uid) > 255:
         logger.error(f"Invalid SOP Instance UID: {sop_uid}")
         return 0xC001  # Processing failure
-    
+
     # Production: Get caller information for logging
-    caller_ae = 'unknown'
-    caller_ip = 'unknown'
+    caller_ae = "unknown"
+    caller_ip = "unknown"
     try:
-        if hasattr(event, 'assoc') and event.assoc:
-            caller_ae = getattr(event.assoc.requestor, 'ae_title', 'unknown')
-            caller_ip = getattr(event.assoc.requestor, 'address', 'unknown')
+        if hasattr(event, "assoc") and event.assoc:
+            caller_ae = getattr(event.assoc.requestor, "ae_title", "unknown")
+            caller_ip = getattr(event.assoc.requestor, "address", "unknown")
     except:
         pass
-    
+
     # Production: Check file size limit
     try:
-        if hasattr(ds, 'PixelData'):
+        if hasattr(ds, "PixelData"):
             pixel_data_size = len(ds.PixelData) if ds.PixelData else 0
-            max_size = getattr(Config, 'DICOM_MAX_FILE_SIZE', 104857600)  # 100MB default
+            max_size = getattr(
+                Config, "DICOM_MAX_FILE_SIZE", 104857600
+            )  # 100MB default
             if pixel_data_size > max_size:
-                logger.warning(f"DICOM file too large: {pixel_data_size} bytes (max: {max_size}) from {caller_ae}")
+                logger.warning(
+                    f"DICOM file too large: {pixel_data_size} bytes (max: {max_size}) from {caller_ae}"
+                )
                 return 0xC001
     except Exception as e:
         logger.warning(f"Could not check file size: {e}")
-    
+
     # Production: Check storage quota
     try:
         import shutil
+
         storage_path = Config.DICOM_STORAGE_PATH
         if os.path.exists(storage_path):
             total, used, free = shutil.disk_usage(storage_path)
             used_gb = used / (1024**3)
-            quota_gb = getattr(Config, 'DICOM_STORAGE_QUOTA_GB', 100)  # 100GB default
+            quota_gb = getattr(Config, "DICOM_STORAGE_QUOTA_GB", 100)  # 100GB default
             if used_gb >= quota_gb:
                 logger.error(f"Storage quota exceeded: {used_gb:.2f}GB / {quota_gb}GB")
                 return 0xC001
     except Exception as e:
         logger.warning(f"Could not check storage quota: {e}")
-    
+
     def _store():
         # Production: Check for duplicate (avoid reprocessing)
         existing_image = DicomImage.query.filter_by(sop_instance_uid=sop_uid).first()
@@ -203,87 +221,98 @@ def handle_store(event):
             return 0x0000  # Success - already stored
 
         logger.info(f"Received DICOM image: {sop_uid} from {caller_ae} ({caller_ip})")
-        
+
         # Extract metadata
         metadata = extract_dicom_metadata(ds)
-        
+
         # Production: Validate required metadata
-        if not metadata.get('study_instance_uid') or not metadata.get('series_instance_uid'):
+        if not metadata.get("study_instance_uid") or not metadata.get(
+            "series_instance_uid"
+        ):
             logger.error(f"Missing required DICOM metadata for {sop_uid}")
             return 0xC001
-        
+
         # Save DICOM file
-        dicom_file_path = save_dicom_file(
-            ds,
-            Config.DICOM_STORAGE_PATH,
-            sop_uid
-        )
-        
+        dicom_file_path = save_dicom_file(ds, Config.DICOM_STORAGE_PATH, sop_uid)
+
         # Generate and save thumbnail
-        thumbnail_path = save_thumbnail_file(
-            ds,
-            Config.THUMBNAIL_STORAGE_PATH,
-            sop_uid
-        )
-        
+        thumbnail_path = save_thumbnail_file(ds, Config.THUMBNAIL_STORAGE_PATH, sop_uid)
+
         # Find or create patient
-        patient_id = metadata.get('patient_id')
+        patient_id = metadata.get("patient_id")
         patient = None
         if patient_id:
             patient = Patient.query.get(patient_id)
-        
+
         # Parse dates
-        study_date = parse_date(metadata.get('study_date'))
-        series_date = parse_date(metadata.get('series_date'))
-        birth_date = parse_date(metadata.get('patient_birth_date'))
-        study_instance_uid = metadata.get('study_instance_uid')
-        series_instance_uid = metadata.get('series_instance_uid')
-        
+        study_date = parse_date(metadata.get("study_date"))
+        series_date = parse_date(metadata.get("series_date"))
+        birth_date = parse_date(metadata.get("patient_birth_date"))
+        study_instance_uid = metadata.get("study_instance_uid")
+        series_instance_uid = metadata.get("series_instance_uid")
+
         # Create image record (all DICOM data in one table)
         # Note: Already checked for duplicates above, so this is a new image
+
+        # Link to Visit/Appointment using accession_number
+        visit_id = None
+        appointment_id = None
+        accession = metadata.get("accession_number")
+        if accession:
+            from app.models import Visit, Appointment
+
+            visit = Visit.query.filter_by(accession_number=accession).first()
+            if visit:
+                visit_id = visit.id
+                appointment_id = visit.appointment_id
+                logger.info(
+                    f"Linked DICOM image to Visit {visit_id} and Appointment {appointment_id}"
+                )
+
         image = DicomImage(
             sop_instance_uid=sop_uid,
             study_instance_uid=study_instance_uid,
             series_instance_uid=series_instance_uid,
             patient_id=patient_id,
-            patient_name=metadata.get('patient_name'),
+            patient_name=metadata.get("patient_name"),
             patient_birth_date=birth_date,
-            patient_sex=metadata.get('patient_sex'),
+            patient_sex=metadata.get("patient_sex"),
             study_date=study_date,
-            study_time=metadata.get('study_time'),
-            study_description=metadata.get('study_description'),
-            accession_number=metadata.get('accession_number'),
-            referring_physician=metadata.get('referring_physician'),
-            institution_name=metadata.get('institution_name'),
-            series_number=metadata.get('series_number'),
-            series_description=metadata.get('series_description'),
+            study_time=metadata.get("study_time"),
+            study_description=metadata.get("study_description"),
+            accession_number=accession,
+            referring_physician=metadata.get("referring_physician"),
+            institution_name=metadata.get("institution_name"),
+            series_number=metadata.get("series_number"),
+            series_description=metadata.get("series_description"),
             series_date=series_date,
-            series_time=metadata.get('series_time'),
-            modality=metadata.get('modality', 'US'),
-            body_part_examined=metadata.get('body_part_examined'),
-            manufacturer=metadata.get('manufacturer'),
-            manufacturer_model_name=metadata.get('manufacturer_model_name'),
-            instance_number=metadata.get('instance_number'),
+            series_time=metadata.get("series_time"),
+            modality=metadata.get("modality", "US"),
+            body_part_examined=metadata.get("body_part_examined"),
+            manufacturer=metadata.get("manufacturer"),
+            manufacturer_model_name=metadata.get("manufacturer_model_name"),
+            instance_number=metadata.get("instance_number"),
             file_path=dicom_file_path,
             thumbnail_path=thumbnail_path,
-            dicom_metadata=json.dumps(metadata) if metadata else None
+            dicom_metadata=json.dumps(metadata) if metadata else None,
+            visit_id=visit_id,
+            appointment_id=appointment_id,
         )
         db.session.add(image)
-        db.session.flush()
-        db.session.refresh(image)  # Ensure we have the ID
-        
+        db.session.flush()  # Get image.id before creating measurement
+
         # Create measurement record (simplified - can be enhanced)
-        if metadata.get('modality') == 'US':
+        if metadata.get("modality") == "US":
             measurement = DicomMeasurement(
                 dicom_image_id=image.id,
                 patient_id=patient_id,
                 study_instance_uid=study_instance_uid,
-                measurement_type='Study',
-                measurement_value='Received',
-                measurement_data=json.dumps({'status': 'received', 'modality': 'US'})
+                measurement_type="Study",
+                measurement_value="Received",
+                measurement_data=json.dumps({"status": "received", "modality": "US"}),
             )
             db.session.add(measurement)
-        
+
         db.session.commit()
 
         processing_time = time.time() - start_time
@@ -324,8 +353,10 @@ def handle_store(event):
         try:
             if "dicom_file_path" in locals() and os.path.exists(dicom_file_path):
                 os.remove(dicom_file_path)
-            if "thumbnail_path" in locals() and thumbnail_path and os.path.exists(
-                thumbnail_path
+            if (
+                "thumbnail_path" in locals()
+                and thumbnail_path
+                and os.path.exists(thumbnail_path)
             ):
                 os.remove(thumbnail_path)
         except Exception as cleanup_error:
@@ -339,6 +370,7 @@ def handle_mpps_create(event):
     Handle MPPS N-CREATE (exam started)
     Updates Visit status to 'in_progress' and Appointment status
     """
+
     def _handle():
         ds = event.request.AttributeList
         if not ds:
@@ -378,9 +410,7 @@ def handle_mpps_create(event):
                 visit.appointment.status = "With Technician"
 
             db.session.commit()
-            logger.info(
-                f"Updated Visit {visit.id} status to 'in_progress' via MPPS"
-            )
+            logger.info(f"Updated Visit {visit.id} status to 'in_progress' via MPPS")
         else:
             logger.warning(
                 f"MPPS N-CREATE: Visit not found for AccessionNumber: {accession_number}"
@@ -410,6 +440,7 @@ def handle_mpps_set(event):
     Handle MPPS N-SET (exam status update, e.g., completed)
     Updates Visit status to 'completed' and Appointment status
     """
+
     def _handle():
         ds = event.request.AttributeList
         if not ds:
@@ -453,15 +484,11 @@ def handle_mpps_set(event):
                     visit.appointment.status = "Completed"
 
                 db.session.commit()
-                logger.info(
-                    f"Updated Visit {visit.id} status to 'completed' via MPPS"
-                )
+                logger.info(f"Updated Visit {visit.id} status to 'completed' via MPPS")
             elif procedure_step_status == "DISCONTINUED":
                 visit.visit_status = "cancelled"
                 db.session.commit()
-                logger.info(
-                    f"Updated Visit {visit.id} status to 'cancelled' via MPPS"
-                )
+                logger.info(f"Updated Visit {visit.id} status to 'cancelled' via MPPS")
         else:
             logger.warning(
                 f"MPPS N-SET: Visit not found for AccessionNumber: {accession_number}"
@@ -489,25 +516,25 @@ def handle_mpps_set(event):
 def start_mpps_server():
     """Start the MPPS (Modality Performed Procedure Step) server"""
     global _mpps_server_thread, _mpps_server_running
-    
+
     if _mpps_server_running:
         logger.warning("MPPS server is already running")
         return
-    
+
     def _run_mpps_server():
         global _mpps_server_running
         try:
             ae = AE(ae_title=Config.DICOM_AE_TITLE)
             ae.require_called_aet = False
             ts = [ImplicitVRLittleEndian, ExplicitVRLittleEndian]
-            
+
             # MPPS SOP Classes
-            ae.add_supported_context('1.2.840.10008.5.1.4.32.2', ts)  # MPPS N-CREATE
-            ae.add_supported_context('1.2.840.10008.5.1.4.32.3', ts)  # MPPS N-SET
+            ae.add_supported_context("1.2.840.10008.5.1.4.32.2", ts)  # MPPS N-CREATE
+            ae.add_supported_context("1.2.840.10008.5.1.4.32.3", ts)  # MPPS N-SET
             ae.add_supported_context(Verification, ts)
-            
+
             # Production: Bind to all interfaces for remote access
-            bind_address = '0.0.0.0'
+            bind_address = "0.0.0.0"
             mpps_port = Config.DICOM_MWL_PORT + 2  # Use MWL port + 2 for MPPS
             logger.info(f"Starting MPPS server on {bind_address}:{mpps_port}")
             _mpps_server_running = True
@@ -516,8 +543,8 @@ def start_mpps_server():
                 block=True,
                 evt_handlers=[
                     (evt.EVT_N_CREATE, handle_mpps_create),
-                    (evt.EVT_N_SET, handle_mpps_set)
-                ]
+                    (evt.EVT_N_SET, handle_mpps_set),
+                ],
             )
         except OSError as e:
             if "Address already in use" in str(e):
@@ -528,13 +555,16 @@ def start_mpps_server():
         except Exception as e:
             logger.error(f"MPPS server error: {e}", exc_info=True)
             _mpps_server_running = False
-    
-    _mpps_server_thread = threading.Thread(target=_run_mpps_server, daemon=True, name="MPPS-Server")
+
+    _mpps_server_thread = threading.Thread(
+        target=_run_mpps_server, daemon=True, name="MPPS-Server"
+    )
     _mpps_server_thread.start()
     logger.info("MPPS server thread started")
-    
+
     # Wait a moment to verify it started
     import time
+
     time.sleep(0.5)
     if not _mpps_server_running:
         logger.warning("MPPS server may not have started properly")
@@ -543,7 +573,7 @@ def start_mpps_server():
 def start_mwl_server():
     """Start the Modality Worklist server - Production ready"""
     global _mwl_server_thread, _mwl_server_running
-    
+
     if _mwl_server_running:
         logger.warning("MWL server is already running")
         return
@@ -551,13 +581,15 @@ def start_mwl_server():
     # If the MWL port is already listening, assume an existing MWL server
     # (e.g. previous process or separate listener) and don't fail startup.
     import socket
+
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(1)
         if sock.connect_ex(("127.0.0.1", Config.DICOM_MWL_PORT)) == 0:
             logger.warning(
                 "MWL port %s is already open. Assuming MWL server is running; "
-                "skipping new MWL start.", Config.DICOM_MWL_PORT
+                "skipping new MWL start.",
+                Config.DICOM_MWL_PORT,
             )
             _mwl_server_running = True
             return
@@ -568,24 +600,26 @@ def start_mwl_server():
             sock.close()
         except Exception:
             pass
-    
+
     def _run_mwl_server():
         global _mwl_server_running
         try:
             ae = AE(ae_title=Config.DICOM_AE_TITLE)
             ae.require_called_aet = False
             ts = [ImplicitVRLittleEndian, ExplicitVRLittleEndian]
-            ae.add_supported_context('1.2.840.10008.5.1.4.31', ts)  # Modality Worklist
+            ae.add_supported_context("1.2.840.10008.5.1.4.31", ts)  # Modality Worklist
             ae.add_supported_context(Verification, ts)
-            
+
             # Production: Bind to all interfaces for remote access
-            bind_address = '0.0.0.0'
-            logger.info(f"Starting MWL server on {bind_address}:{Config.DICOM_MWL_PORT}")
+            bind_address = "0.0.0.0"
+            logger.info(
+                f"Starting MWL server on {bind_address}:{Config.DICOM_MWL_PORT}"
+            )
             _mwl_server_running = True
             ae.start_server(
                 (bind_address, Config.DICOM_MWL_PORT),
                 block=True,
-                evt_handlers=[(evt.EVT_C_FIND, handle_mwl_find)]
+                evt_handlers=[(evt.EVT_C_FIND, handle_mwl_find)],
             )
         except OSError as e:
             if "Address already in use" in str(e):
@@ -601,13 +635,16 @@ def start_mwl_server():
         except Exception as e:
             logger.error(f"MWL server error: {e}", exc_info=True)
             _mwl_server_running = False
-    
-    _mwl_server_thread = threading.Thread(target=_run_mwl_server, daemon=True, name="MWL-Server")
+
+    _mwl_server_thread = threading.Thread(
+        target=_run_mwl_server, daemon=True, name="MWL-Server"
+    )
     _mwl_server_thread.start()
     logger.info("MWL server thread started")
-    
+
     # Wait a moment to verify it started
     import time
+
     time.sleep(0.5)
     if not _mwl_server_running:
         # Do not raise here; log a warning so app can continue to run.
@@ -621,7 +658,7 @@ def start_mwl_server():
 def start_storage_server():
     """Start the C-STORE server for receiving DICOM images - Production ready"""
     global _storage_server_thread, _storage_server_running
-    
+
     if _storage_server_running:
         logger.warning("Storage server is already running")
         return
@@ -629,6 +666,7 @@ def start_storage_server():
     # If the storage port is already listening, assume an existing Storage server
     # and don't fail startup.
     import socket
+
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(1)
@@ -647,36 +685,42 @@ def start_storage_server():
             sock.close()
         except Exception:
             pass
-    
+
     def _run_storage_server():
         global _storage_server_running
         try:
             ae = AE(ae_title=Config.DICOM_AE_TITLE)
             ae.require_called_aet = False
-            
+
             ts = [
                 JPEGBaseline8Bit,
-                '1.2.840.10008.1.2.4.51',  # JPEG Extended
-                '1.2.840.10008.1.2.4.57',  # JPEG Lossless
-                '1.2.840.10008.1.2.4.70',  # JPEG Lossless SV1
+                "1.2.840.10008.1.2.4.51",  # JPEG Extended
+                "1.2.840.10008.1.2.4.57",  # JPEG Lossless
+                "1.2.840.10008.1.2.4.70",  # JPEG Lossless SV1
                 ImplicitVRLittleEndian,
                 ExplicitVRLittleEndian,
-                '1.2.840.10008.1.2.2',  # Explicit VR Big Endian
+                "1.2.840.10008.1.2.2",  # Explicit VR Big Endian
             ]
-            
+
             # Ultrasound Single-frame and Multi-frame
-            ae.add_supported_context('1.2.840.10008.5.1.4.1.1.6.1', ts)  # US Single-frame
-            ae.add_supported_context('1.2.840.10008.5.1.4.1.1.3.1', ts)  # US Multi-frame
+            ae.add_supported_context(
+                "1.2.840.10008.5.1.4.1.1.6.1", ts
+            )  # US Single-frame
+            ae.add_supported_context(
+                "1.2.840.10008.5.1.4.1.1.3.1", ts
+            )  # US Multi-frame
             ae.add_supported_context(Verification, ts)
-            
+
             # Production: Bind to all interfaces for remote access
-            bind_address = '0.0.0.0'
-            logger.info(f"Starting Storage server on {bind_address}:{Config.DICOM_STORAGE_PORT}")
+            bind_address = "0.0.0.0"
+            logger.info(
+                f"Starting Storage server on {bind_address}:{Config.DICOM_STORAGE_PORT}"
+            )
             _storage_server_running = True
             ae.start_server(
                 (bind_address, Config.DICOM_STORAGE_PORT),
                 block=True,
-                evt_handlers=[(evt.EVT_C_STORE, handle_store)]
+                evt_handlers=[(evt.EVT_C_STORE, handle_store)],
             )
         except OSError as e:
             if "Address already in use" in str(e):
@@ -692,13 +736,16 @@ def start_storage_server():
         except Exception as e:
             logger.error(f"Storage server error: {e}", exc_info=True)
             _storage_server_running = False
-    
-    _storage_server_thread = threading.Thread(target=_run_storage_server, daemon=True, name="Storage-Server")
+
+    _storage_server_thread = threading.Thread(
+        target=_run_storage_server, daemon=True, name="Storage-Server"
+    )
     _storage_server_thread.start()
     logger.info("Storage server thread started")
-    
+
     # Wait a moment to verify it started
     import time
+
     time.sleep(0.5)
     if not _storage_server_running:
         # Do not raise here; log a warning so app can continue to run.
@@ -731,37 +778,43 @@ def stop_dicom_servers():
 def get_server_status() -> Dict[str, Any]:
     """Get status of DICOM servers - Production ready"""
     import socket
-    
+
     # Check if ports are actually listening
     def check_port(port):
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(1)
-            result = sock.connect_ex(('localhost', port))
+            result = sock.connect_ex(("localhost", port))
             sock.close()
             return result == 0
         except:
             return False
-    
+
     mwl_port_open = check_port(Config.DICOM_MWL_PORT)
     storage_port_open = check_port(Config.DICOM_STORAGE_PORT)
     mpps_port = Config.DICOM_MWL_PORT + 2
     mpps_port_open = check_port(mpps_port)
-    
+
     return {
-        'mwl_server_running': _mwl_server_running and mwl_port_open,
-        'storage_server_running': _storage_server_running and storage_port_open,
-        'mpps_server_running': _mpps_server_running and mpps_port_open,
-        'mwl_port': Config.DICOM_MWL_PORT,
-        'storage_port': Config.DICOM_STORAGE_PORT,
-        'mpps_port': mpps_port,
-        'ae_title': Config.DICOM_AE_TITLE,
-        'mwl_port_open': mwl_port_open,
-        'storage_port_open': storage_port_open,
-        'mpps_port_open': mpps_port_open,
-        'threads': {
-            'mwl_thread_alive': _mwl_server_thread.is_alive() if _mwl_server_thread else False,
-            'storage_thread_alive': _storage_server_thread.is_alive() if _storage_server_thread else False,
-            'mpps_thread_alive': _mpps_server_thread.is_alive() if _mpps_server_thread else False
-        }
+        "mwl_server_running": _mwl_server_running and mwl_port_open,
+        "storage_server_running": _storage_server_running and storage_port_open,
+        "mpps_server_running": _mpps_server_running and mpps_port_open,
+        "mwl_port": Config.DICOM_MWL_PORT,
+        "storage_port": Config.DICOM_STORAGE_PORT,
+        "mpps_port": mpps_port,
+        "ae_title": Config.DICOM_AE_TITLE,
+        "mwl_port_open": mwl_port_open,
+        "storage_port_open": storage_port_open,
+        "mpps_port_open": mpps_port_open,
+        "threads": {
+            "mwl_thread_alive": _mwl_server_thread.is_alive()
+            if _mwl_server_thread
+            else False,
+            "storage_thread_alive": _storage_server_thread.is_alive()
+            if _storage_server_thread
+            else False,
+            "mpps_thread_alive": _mpps_server_thread.is_alive()
+            if _mpps_server_thread
+            else False,
+        },
     }
