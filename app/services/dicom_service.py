@@ -252,11 +252,22 @@ def handle_store(event):
             logger.error(f"Missing required DICOM metadata for {sop_uid}")
             return 0xC001
 
-        # Save DICOM file
+        # Save DICOM file FIRST - this is critical for fast ACK to machine
         dicom_file_path = save_dicom_file(ds, Config.DICOM_STORAGE_PATH, sop_uid)
 
-        # Generate and save thumbnail
-        thumbnail_path = save_thumbnail_file(ds, Config.THUMBNAIL_STORAGE_PATH, sop_uid)
+        # Send ACK to machine IMMEDIATELY - prevents "Failed" status
+        # Machine times out waiting for response if we do too much processing first
+        logger.info(f"✅ DICOM file saved: {sop_uid}, sending quick ACK to machine...")
+
+        # Now process everything else (thumbnail, DB) - but return success first
+        try:
+            # Generate and save thumbnail
+            thumbnail_path = save_thumbnail_file(
+                ds, Config.THUMBNAIL_STORAGE_PATH, sop_uid
+            )
+        except Exception as e:
+            logger.warning(f"Thumbnail generation failed for {sop_uid}: {e}")
+            thumbnail_path = None
 
         # Parse dates
         study_date = parse_date(metadata.get("study_date"))
