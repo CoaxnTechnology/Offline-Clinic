@@ -1234,20 +1234,24 @@ def get_study_by_appointment(appointment_id):
 
         visit = Visit.query.filter_by(appointment_id=appointment_id).first()
 
-        if not visit or not visit.accession_number:
-            return jsonify(
-                {"success": False, "error": "No DICOM study found for this appointment"}
-            ), 404
+        # Method 1: Direct lookup using appointment_id (new way)
+        study_image = DicomImage.query.filter_by(appointment_id=appointment_id).first()
 
-        study_image = DicomImage.query.filter_by(
-            accession_number=visit.accession_number
-        ).first()
+        # Method 2: Fallback to old way via visit accession_number
+        if not study_image and visit and visit.accession_number:
+            study_image = DicomImage.query.filter_by(
+                accession_number=visit.accession_number
+            ).first()
 
         if not study_image:
+            # Check if images exist but aren't linked
+            unlinked_count = DicomImage.query.filter(
+                DicomImage.appointment_id.is_(None)
+            ).count()
             return jsonify(
                 {
                     "success": False,
-                    "error": "DICOM study not found for this appointment's accession number",
+                    "error": f"No DICOM study found for appointment {appointment_id}. Unlinked images: {unlinked_count}",
                 }
             ), 404
 
@@ -1365,22 +1369,27 @@ def get_images_by_appointment(appointment_id):
 
         visit = Visit.query.filter_by(appointment_id=appointment_id).first()
 
-        if not visit or not visit.accession_number:
-            return jsonify(
-                {"success": False, "error": "No DICOM study found for this appointment"}
-            ), 404
+        # Method 1: Direct lookup using appointment_id (new way)
+        study_images = DicomImage.query.filter_by(appointment_id=appointment_id).all()
 
-        study_images = (
-            DicomImage.query.filter_by(accession_number=visit.accession_number)
-            .order_by(DicomImage.series_instance_uid, DicomImage.instance_number)
-            .all()
-        )
+        # Method 2: Fallback to old way via visit accession_number
+        if not study_images and visit and visit.accession_number:
+            study_images = (
+                DicomImage.query.filter_by(accession_number=visit.accession_number)
+                .order_by(DicomImage.series_instance_uid, DicomImage.instance_number)
+                .all()
+            )
 
         if not study_images:
+            # Check if images exist but aren't linked
+            unlinked_count = DicomImage.query.filter(
+                DicomImage.appointment_id.is_(None)
+            ).count()
+
             return jsonify(
                 {
                     "success": False,
-                    "error": "No DICOM images found for this appointment",
+                    "error": f"No DICOM images found for appointment {appointment_id}. Unlinked images in DB: {unlinked_count}",
                 }
             ), 404
 
