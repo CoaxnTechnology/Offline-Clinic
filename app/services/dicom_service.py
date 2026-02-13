@@ -238,36 +238,51 @@ def handle_store(event):
         # Generate and save thumbnail
         thumbnail_path = save_thumbnail_file(ds, Config.THUMBNAIL_STORAGE_PATH, sop_uid)
 
-        # Find or create patient
-        patient_id = metadata.get("patient_id")
-        patient = None
-        if patient_id:
-            patient = Patient.query.get(patient_id)
-
         # Parse dates
         study_date = parse_date(metadata.get("study_date"))
+        # Fallback: use today if StudyDate is missing to avoid NOT NULL DB constraint violation
+        if study_date is None:
+            from datetime import date as date_type
+            study_date = date_type.today()
+            logger.warning(f"Missing StudyDate in DICOM {sop_uid}, defaulting to today")
+
         series_date = parse_date(metadata.get("series_date"))
         birth_date = parse_date(metadata.get("patient_birth_date"))
         study_instance_uid = metadata.get("study_instance_uid")
         series_instance_uid = metadata.get("series_instance_uid")
 
-        # Create image record (all DICOM data in one table)
-        # Note: Already checked for duplicates above, so this is a new image
-
-        # Link to Visit/Appointment using accession_number
+        # Link to Visit/Appointment via accession_number (primary method).
+        # Get patient_id from the DB Visit record — NOT from the raw DICOM PatientID tag —
+        # so we always store a valid FK and avoid IntegrityErrors that cause the machine to
+        # receive 0xC001 and show "retry / failed".
         visit_id = None
         appointment_id = None
+        patient_id = None
         accession = metadata.get("accession_number")
         if accession:
-            from app.models import Visit, Appointment
+            from app.models import Visit
 
             visit = Visit.query.filter_by(accession_number=accession).first()
             if visit:
                 visit_id = visit.id
                 appointment_id = visit.appointment_id
+                patient_id = visit.patient_id  # Authoritative patient_id from DB
                 logger.info(
-                    f"Linked DICOM image to Visit {visit_id} and Appointment {appointment_id}"
+                    f"Linked DICOM image to Visit {visit_id}, Appointment {appointment_id}, Patient {patient_id}"
                 )
+
+        # Fallback: match patient by DICOM PatientID tag only when accession lookup failed
+        if patient_id is None:
+            dicom_patient_id = metadata.get("patient_id")
+            if dicom_patient_id:
+                patient = Patient.query.get(dicom_patient_id)
+                if patient:
+                    patient_id = patient.id
+                    logger.info(f"Linked DICOM image to patient {patient_id} via PatientID tag")
+                else:
+                    logger.warning(
+                        f"DICOM PatientID '{dicom_patient_id}' not found in DB - storing without patient link"
+                    )
 
         image = DicomImage(
             sop_instance_uid=sop_uid,
