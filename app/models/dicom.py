@@ -105,6 +105,8 @@ class DicomImage(db.Model, TimestampMixin):
             "instance_number": self.instance_number,
             "file_path": self.file_path,
             "thumbnail_path": self.thumbnail_path,
+            "file_url": f"/api/dicom/images/{self.id}/file",
+            "thumbnail_url": f"/api/dicom/images/{self.id}/thumbnail" if self.thumbnail_path else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "visit_id": self.visit_id,
             "appointment_id": self.appointment_id,

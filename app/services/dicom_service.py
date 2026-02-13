@@ -328,6 +328,15 @@ def handle_store(event):
             )
             db.session.add(measurement)
 
+        # Update appointment status to "Study Completed" when DICOM is received
+        if appointment_id:
+            appt = Appointment.query.get(appointment_id)
+            if appt and appt.status == "Sent to DICOM":
+                appt.status = "Study Completed"
+                logger.info(
+                    f"Updated appointment {appointment_id} status to 'Study Completed'"
+                )
+
         db.session.commit()
 
         processing_time = time.time() - start_time
