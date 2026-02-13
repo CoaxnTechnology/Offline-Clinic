@@ -269,11 +269,13 @@ def handle_store(event):
             dicom_metadata=json.dumps(metadata) if metadata else None
         )
         db.session.add(image)
+        db.session.flush()
+        db.session.refresh(image)  # Ensure we have the ID
         
         # Create measurement record (simplified - can be enhanced)
         if metadata.get('modality') == 'US':
             measurement = DicomMeasurement(
-                dicom_image_id=image.id if image.id else None,
+                dicom_image_id=image.id,
                 patient_id=patient_id,
                 study_instance_uid=study_instance_uid,
                 measurement_type='Study',

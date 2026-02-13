@@ -19,7 +19,9 @@ from datetime import datetime, timedelta
 super_admin_bp = Blueprint("super_admin", __name__, url_prefix="/api/super-admin")
 
 
-def _current_admin() -> Admin | None:
+from typing import Optional
+
+def _current_admin() -> Optional[Admin]:
     try:
         user_id = int(get_jwt_identity())
     except Exception:
@@ -27,7 +29,7 @@ def _current_admin() -> Admin | None:
     return Admin.query.get(user_id)
 
 
-def _require_super_admin(admin: Admin | None):
+def _require_super_admin(admin: Optional[Admin]):
     if not admin or not admin.is_super_admin:
         return jsonify({"success": False, "error": "Super admin only"}), 403
     return None

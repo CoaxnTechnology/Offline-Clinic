@@ -978,3 +978,360 @@ def get_patient_studies(patient_id):
         logger.error(f"Error getting patient studies: {e}", exc_info=True)
         error_msg = "Failed to get patient studies" if not current_app.debug else str(e)
         return jsonify({"success": False, "error": error_msg}), 500
+
+
+@dicom_bp.route("/studies/<study_instance_uid>/full", methods=["GET"])
+@jwt_required()
+def get_study_full(study_instance_uid):
+    """
+    Get full study details with appointment and patient information.
+    
+    Safety: Uses accession_number as immutable link key. Validates patient_id
+    consistency across all tables to prevent data from being attached to wrong patient.
+    
+    Query params:
+        validate_patient: If provided, validates study belongs to this patient_id
+    """
+    try:
+        from sqlalchemy import func, distinct
+        from app.models import Visit, Appointment
+
+        validate_patient_id = request.args.get("validate_patient")
+
+        study_image = DicomImage.query.filter_by(
+            study_instance_uid=study_instance_uid
+        ).first()
+
+        if not study_image:
+            return jsonify({"success": False, "error": "Study not found"}), 404
+
+        accession_number = study_image.accession_number
+        dicom_patient_id = study_image.patient_id
+
+        if not accession_number:
+            return jsonify({
+                "success": False, 
+                "error": "Study has no accession_number - cannot link to appointment"
+            }), 400
+
+        visit = None
+        appointment = None
+        patient = None
+        patient_link_verified = False
+
+        if accession_number:
+            visit = Visit.query.filter_by(accession_number=accession_number).first()
+            
+            if visit:
+                appointment = Appointment.query.get(visit.appointment_id) if visit.appointment_id else None
+                
+                if appointment and appointment.patient_id:
+                    patient = Patient.query.get(appointment.patient_id)
+                    
+                    if patient:
+                        dicom_patient_id_str = str(dicom_patient_id) if dicom_patient_id else None
+                        appointment_patient_id_str = str(appointment.patient_id)
+                        
+                        patient_link_verified = (dicom_patient_id_str == appointment_patient_id_str)
+                        
+                        if validate_patient_id and str(validate_patient_id) != appointment_patient_id_str:
+                            logger.warning(
+                                f"Patient ID mismatch: validate_patient={validate_patient_id}, "
+                                f"appointment patient_id={appointment_patient_id_str}, "
+                                f"dicom patient_id={dicom_patient_id_str}"
+                            )
+                            return jsonify({
+                                "success": False, 
+                                "error": f"Study does not belong to patient {validate_patient_id}"
+                            }), 403
+
+        series_query = (
+            db.session.query(
+                DicomImage.series_instance_uid,
+                func.min(DicomImage.modality).label("modality"),
+                func.min(DicomImage.series_number).label("series_number"),
+                func.min(DicomImage.series_description).label("series_description"),
+                func.min(DicomImage.series_date).label("series_date"),
+                func.min(DicomImage.body_part_examined).label("body_part_examined"),
+                func.min(DicomImage.manufacturer).label("manufacturer"),
+                func.count(DicomImage.id).label("image_count"),
+            )
+            .filter_by(study_instance_uid=study_instance_uid)
+            .group_by(DicomImage.series_instance_uid)
+            .all()
+        )
+
+        series_list = []
+        for series in series_query:
+            images = DicomImage.query.filter_by(
+                study_instance_uid=study_instance_uid,
+                series_instance_uid=series.series_instance_uid
+            ).order_by(DicomImage.instance_number.asc()).all()
+            
+            images_data = []
+            for img in images:
+                images_data.append({
+                    "id": img.id,
+                    "sop_instance_uid": img.sop_instance_uid,
+                    "instance_number": img.instance_number,
+                    "thumbnail_path": img.thumbnail_path,
+                    "file_path": img.file_path,
+                })
+            
+            series_list.append({
+                "series_instance_uid": series.series_instance_uid,
+                "modality": series.modality,
+                "series_number": series.series_number,
+                "series_description": series.series_description,
+                "series_date": series.series_date.isoformat() if series.series_date else None,
+                "body_part_examined": series.body_part_examined,
+                "manufacturer": series.manufacturer,
+                "image_count": series.image_count,
+                "images": images_data,
+            })
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "study": {
+                    "study_instance_uid": study_image.study_instance_uid,
+                    "study_date": study_image.study_date.isoformat() if study_image.study_date else None,
+                    "study_time": study_image.study_time,
+                    "study_description": study_image.study_description,
+                    "accession_number": accession_number,
+                    "referring_physician": study_image.referring_physician,
+                    "institution_name": study_image.institution_name,
+                    "created_at": study_image.created_at.isoformat() if study_image.created_at else None,
+                },
+                "patient": {
+                    "id": patient.id if patient else None,
+                    "patient_id": patient.patient_id if patient else dicom_patient_id,
+                    "first_name": patient.first_name if patient else None,
+                    "last_name": patient.last_name if patient else None,
+                    "gender": patient.gender if patient else None,
+                    "birth_date": patient.birth_date.isoformat() if patient and patient.birth_date else None,
+                    "phone": patient.phone if patient else None,
+                } if patient else {
+                    "id": None,
+                    "patient_id": dicom_patient_id,
+                    "first_name": None,
+                    "last_name": study_image.patient_name,
+                    "gender": study_image.patient_sex,
+                    "birth_date": study_image.patient_birth_date.isoformat() if study_image.patient_birth_date else None,
+                },
+                "appointment": {
+                    "id": appointment.id if appointment else None,
+                    "date": appointment.date.isoformat() if appointment and appointment.date else None,
+                    "time": appointment.time if appointment else None,
+                    "status": appointment.status if appointment else None,
+                    "reason": appointment.reason if appointment else None,
+                    "notes": appointment.notes if appointment else None,
+                } if appointment else None,
+                "visit": {
+                    "id": visit.id if visit else None,
+                    "visit_status": visit.visit_status if visit else None,
+                    "exam_type": visit.exam_type if visit else None,
+                    "modality": visit.modality if visit else None,
+                    "study_instance_uid": visit.study_instance_uid if visit else None,
+                } if visit else None,
+                "series": series_list,
+                "_meta": {
+                    "patient_link_verified": patient_link_verified,
+                    "dicom_patient_id": dicom_patient_id,
+                    "linked_patient_id": patient.patient_id if patient else None,
+                }
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting full study: {e}", exc_info=True)
+        error_msg = "Failed to get full study" if not current_app.debug else str(e)
+        return jsonify({"success": False, "error": error_msg}), 500
+
+
+@dicom_bp.route("/appointments/<int:appointment_id>/study", methods=["GET"])
+@jwt_required()
+def get_study_by_appointment(appointment_id):
+    """
+    Get DICOM study for a specific appointment.
+    
+    Safety: Uses appointment_id to look up visit, then validates the study
+    belongs to the correct patient via accession_number matching.
+    """
+    try:
+        from app.models import Visit
+
+        appointment = Appointment.query.get_or_404(appointment_id)
+        patient = Patient.query.get_or_404(appointment.patient_id)
+
+        visit = Visit.query.filter_by(appointment_id=appointment_id).first()
+        
+        if not visit or not visit.accession_number:
+            return jsonify({
+                "success": False, 
+                "error": "No DICOM study found for this appointment"
+            }), 404
+
+        study_image = DicomImage.query.filter_by(
+            accession_number=visit.accession_number
+        ).first()
+
+        if not study_image:
+            return jsonify({
+                "success": False, 
+                "error": "DICOM study not found for this appointment's accession number"
+            }), 404
+
+        dicom_patient_id = str(study_image.patient_id) if study_image.patient_id else None
+        appointment_patient_id = str(patient.patient_id)
+        
+        if dicom_patient_id and dicom_patient_id != appointment_patient_id:
+            logger.error(
+                f"PATIENT MISMATCH: DICOM study patient_id={dicom_patient_id} "
+                f"does not match appointment patient_id={appointment_patient_id}"
+            )
+            return jsonify({
+                "success": False, 
+                "error": "Data integrity error: study belongs to different patient"
+            }), 500
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "study_instance_uid": study_image.study_instance_uid,
+                "accession_number": study_image.accession_number,
+                "study_date": study_image.study_date.isoformat() if study_image.study_date else None,
+                "modality": study_image.modality,
+                "patient": {
+                    "id": patient.id,
+                    "patient_id": patient.patient_id,
+                    "name": f"{patient.first_name} {patient.last_name}",
+                },
+                "appointment": {
+                    "id": appointment.id,
+                    "date": appointment.date.isoformat() if appointment.date else None,
+                    "time": appointment.time,
+                    "status": appointment.status,
+                },
+                "visit": {
+                    "id": visit.id,
+                    "visit_status": visit.visit_status,
+                    "exam_type": visit.exam_type,
+                }
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting study by appointment: {e}", exc_info=True)
+        error_msg = "Failed to get study" if not current_app.debug else str(e)
+        return jsonify({"success": False, "error": error_msg}), 500
+
+
+@dicom_bp.route("/appointments/<int:appointment_id>/images", methods=["GET"])
+@jwt_required()
+def get_images_by_appointment(appointment_id):
+    """
+    Get all DICOM images for a specific appointment.
+    
+    Safety: Validates patient_id consistency across DicomImage → Visit → Appointment
+    to prevent images from being attached to wrong patient.
+    """
+    try:
+        from app.models import Visit
+
+        appointment = Appointment.query.get_or_404(appointment_id)
+        patient = Patient.query.get_or_404(appointment.patient_id)
+
+        visit = Visit.query.filter_by(appointment_id=appointment_id).first()
+        
+        if not visit or not visit.accession_number:
+            return jsonify({
+                "success": False, 
+                "error": "No DICOM study found for this appointment"
+            }), 404
+
+        study_images = DicomImage.query.filter_by(
+            accession_number=visit.accession_number
+        ).order_by(DicomImage.series_instance_uid, DicomImage.instance_number).all()
+
+        if not study_images:
+            return jsonify({
+                "success": False, 
+                "error": "No DICOM images found for this appointment"
+            }), 404
+
+        dicom_patient_ids = set()
+        for img in study_images:
+            if img.patient_id:
+                dicom_patient_ids.add(str(img.patient_id))
+        
+        appointment_patient_id = str(patient.patient_id)
+        
+        patient_link_verified = (
+            not dicom_patient_ids or 
+            appointment_patient_id in dicom_patient_ids
+        )
+        
+        if dicom_patient_ids and not patient_link_verified:
+            logger.error(
+                f"PATIENT MISMATCH: DICOM images patient_ids={dicom_patient_ids} "
+                f"do not match appointment patient_id={appointment_patient_id}"
+            )
+            return jsonify({
+                "success": False, 
+                "error": "Data integrity error: images belong to different patient"
+            }), 500
+
+        images_data = []
+        for img in study_images:
+            images_data.append({
+                "id": img.id,
+                "sop_instance_uid": img.sop_instance_uid,
+                "series_instance_uid": img.series_instance_uid,
+                "series_number": img.series_number,
+                "series_description": img.series_description,
+                "instance_number": img.instance_number,
+                "modality": img.modality,
+                "thumbnail_url": f"/api/dicom/images/{img.id}/thumbnail" if img.thumbnail_path else None,
+                "file_url": f"/api/dicom/images/{img.id}/file",
+            })
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "appointment": {
+                    "id": appointment.id,
+                    "date": appointment.date.isoformat() if appointment.date else None,
+                    "time": appointment.time,
+                    "status": appointment.status,
+                    "patient_id": patient.patient_id,
+                },
+                "patient": {
+                    "id": patient.id,
+                    "patient_id": patient.patient_id,
+                    "name": f"{patient.first_name} {patient.last_name}",
+                },
+                "visit": {
+                    "id": visit.id,
+                    "visit_status": visit.visit_status,
+                    "exam_type": visit.exam_type,
+                    "accession_number": visit.accession_number,
+                },
+                "study": {
+                    "study_instance_uid": study_images[0].study_instance_uid,
+                    "study_date": study_images[0].study_date.isoformat() if study_images[0].study_date else None,
+                    "study_description": study_images[0].study_description,
+                    "modality": study_images[0].modality,
+                },
+                "images": images_data,
+                "_meta": {
+                    "total_images": len(images_data),
+                    "patient_link_verified": patient_link_verified,
+                }
+            }
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting images by appointment: {e}", exc_info=True)
+        error_msg = "Failed to get images" if not current_app.debug else str(e)
+        return jsonify({"success": False, "error": error_msg}), 500
