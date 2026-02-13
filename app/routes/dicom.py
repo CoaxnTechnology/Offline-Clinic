@@ -1355,7 +1355,8 @@ def get_study_by_appointment(appointment_id):
 
         except Exception as debug_e:
             logger.error(f"Debug error: {debug_e}")
-            error_msg = str(e) if current_app.debug else "Failed to get study"
+            # Always show the actual error
+            error_msg = f"Failed to get study: {str(e)}"
             return jsonify({"success": False, "error": error_msg}), 500
 
 
@@ -1484,5 +1485,5 @@ def get_images_by_appointment(appointment_id):
 
     except Exception as e:
         logger.error(f"Error getting images by appointment: {e}", exc_info=True)
-        error_msg = "Failed to get images" if not current_app.debug else str(e)
+        error_msg = f"Failed to get images: {str(e)}"
         return jsonify({"success": False, "error": error_msg}), 500
