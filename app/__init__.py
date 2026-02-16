@@ -211,6 +211,14 @@ def create_app(config_name=None):
             db.session.rollback()
             logger.warning(f"Schema auto-migration skipped: {e}")
 
+        # Serve report PDFs at /reports/... so pdf_path URLs work directly
+        @app.route("/reports/<path:filename>")
+        def serve_report(filename):
+            from flask import send_from_directory
+            from app.config import Config
+            reports_dir = os.path.join(Config.PROJECT_ROOT, Config.PDF_REPORTS_PATH)
+            return send_from_directory(reports_dir, filename)
+
         # Register blueprints
         from .routes import (
             auth_bp,
