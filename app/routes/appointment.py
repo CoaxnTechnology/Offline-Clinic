@@ -51,6 +51,11 @@ def list_appointments():
     except Exception:
         current_user = None
 
+    # Default status for all users (doctor and non-doctor) to show appointments
+    # This ensures dashboard always shows appointments with proper status
+    if not status:
+        status = "With Doctor,Sent to DICOM,Study Completed,Completed"
+
     if current_user and current_user.role == "doctor":
         # Build the same display name used when creating appointments
         current_doctor_name = current_user.first_name or current_user.username
