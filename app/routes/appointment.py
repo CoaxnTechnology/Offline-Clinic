@@ -160,11 +160,15 @@ def list_appointments():
 
     if status:
         # Support comma-separated statuses (e.g. "With Doctor,Sent to DICOM,Study Completed")
-        status_list = [s.strip() for s in status.split(",")]
-        if len(status_list) == 1:
-            query = query.filter(Appointment.status == status_list[0])
-        else:
-            query = query.filter(Appointment.status.in_(status_list))
+        # Support "all" to show all statuses
+        status_lower = status.lower().strip()
+        if status_lower != "all":
+            status_list = [s.strip() for s in status.split(",")]
+            if len(status_list) == 1:
+                query = query.filter(Appointment.status == status_list[0])
+            else:
+                query = query.filter(Appointment.status.in_(status_list))
+        # If "all" or not provided, show all statuses (no filter)
 
     # Step 5: Get total count (before pagination)
     total = query.count()
