@@ -161,7 +161,7 @@ def create_clinic_with_doctor():
         )
 
     try:
-        # 1) Create clinic
+        # 1) Create clinic (AE Title will be set after we get clinic.id)
         clinic = Clinic(
             name=name,
             address=clinic_data.get("address"),
@@ -173,6 +173,11 @@ def create_clinic_with_doctor():
         )
         db.session.add(clinic)
         db.session.flush()  # get clinic.id
+
+        # Auto-generate AE Title for DICOM: CLINIC1_DICOM, CLINIC2_DICOM, etc.
+        ae_title_prefix = "CLINIC"
+        clinic.dicom_ae_title = f"{ae_title_prefix}{clinic.id}_DICOM"
+        db.session.flush()
 
         # 2) Create first doctor for this clinic
         token = secrets.token_urlsafe(32)

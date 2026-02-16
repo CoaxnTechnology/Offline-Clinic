@@ -21,7 +21,50 @@ from pydicom.uid import (
 
 from app.extensions import db
 from app.config import Config
-from app.models import Patient, Appointment, DicomImage, DicomMeasurement
+from app.models import Patient, Appointment, DicomImage, DicomMeasurement, Clinic
+
+
+def get_clinic_id_from_ae_title(ae_title: str) -> Optional[int]:
+    """
+    Extract clinic_id from AE Title.
+
+    Supports formats:
+    - STORESCP (default, no clinic - returns None)
+    - CLINIC1_DICOM (returns 1)
+    - CLINIC2_DICOM (returns 2)
+    - etc.
+
+    Returns:
+        clinic_id (int) if AE title contains clinic number, else None
+    """
+    if not ae_title:
+        return None
+
+    ae_title = ae_title.strip()
+    prefix = getattr(Config, "DICOM_AE_TITLE_PREFIX", "CLINIC")
+
+    # Check if AE title starts with prefix (e.g., "CLINIC")
+    if ae_title.startswith(prefix):
+        # Extract number: "CLINIC1_DICOM" -> "1"
+        remainder = ae_title[len(prefix) :]
+        # Get digits at the start
+        clinic_num = ""
+        for char in remainder:
+            if char.isdigit():
+                clinic_num += char
+            else:
+                break
+
+        if clinic_num:
+            try:
+                return int(clinic_num)
+            except ValueError:
+                pass
+
+    # Default AE title (e.g., "STORESCP") - no clinic
+    return None
+
+
 from app.utils.dicom_utils import (
     extract_dicom_metadata,
     save_dicom_file,
@@ -303,6 +346,15 @@ def handle_store(event):
                 clinic_id = visit.clinic_id  # Inherit clinic from visit
                 logger.info(
                     f"Linked DICOM image to Visit {visit_id}, Appointment {appointment_id}, Patient {patient_id}"
+                )
+
+        # If clinic not set from visit, try to get from AE title
+        if clinic_id is None and caller_ae != "unknown":
+            ae_clinic_id = get_clinic_id_from_ae_title(caller_ae)
+            if ae_clinic_id:
+                clinic_id = ae_clinic_id
+                logger.info(
+                    f"Linked DICOM image to Clinic {clinic_id} via AE Title {caller_ae}"
                 )
 
         # Fallback: match patient by DICOM PatientID tag only when accession lookup failed

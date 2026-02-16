@@ -35,13 +35,18 @@ class Config:
     # Frontend base URL (used for links that should open in the web app,
     # like reset-password / set-password pages)
     # Example: http://localhost:8080 or https://app.yourclinic.com
-    FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", os.getenv("PUBLIC_BASE_URL", "http://localhost:8080"))
+    FRONTEND_BASE_URL = os.getenv(
+        "FRONTEND_BASE_URL", os.getenv("PUBLIC_BASE_URL", "http://localhost:8080")
+    )
 
     # DICOM Server Configuration
     # Defaults match your current machine setup: MWL=21102, Storage=21103
     DICOM_MWL_PORT = int(os.getenv("DICOM_MWL_PORT", "21102"))
     DICOM_STORAGE_PORT = int(os.getenv("DICOM_STORAGE_PORT", "21103"))
     DICOM_AE_TITLE = os.getenv("DICOM_AE_TITLE", "STORESCP")
+    DICOM_AE_TITLE_PREFIX = os.getenv(
+        "DICOM_AE_TITLE_PREFIX", "CLINIC"
+    )  # For multi-clinic: CLINIC1_STORESCP, CLINIC2_STORESCP, etc.
 
     # DICOM Production Settings
     DICOM_MAX_FILE_SIZE = int(
@@ -79,7 +84,7 @@ class Config:
     MAIL_USERNAME = os.getenv("MAIL_USERNAME")
     MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
     MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", "noreply@clinic.com")
-    
+
     # JWT Configuration
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY") or SECRET_KEY
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
