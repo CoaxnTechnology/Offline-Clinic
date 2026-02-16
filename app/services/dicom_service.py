@@ -290,6 +290,7 @@ def handle_store(event):
         visit_id = None
         appointment_id = None
         patient_id = None
+        clinic_id = None
         accession = metadata.get("accession_number")
         if accession:
             from app.models import Visit
@@ -299,6 +300,7 @@ def handle_store(event):
                 visit_id = visit.id
                 appointment_id = visit.appointment_id
                 patient_id = visit.patient_id  # Authoritative patient_id from DB
+                clinic_id = visit.clinic_id  # Inherit clinic from visit
                 logger.info(
                     f"Linked DICOM image to Visit {visit_id}, Appointment {appointment_id}, Patient {patient_id}"
                 )
@@ -322,6 +324,7 @@ def handle_store(event):
             sop_instance_uid=sop_uid,
             study_instance_uid=study_instance_uid,
             series_instance_uid=series_instance_uid,
+            clinic_id=clinic_id,
             patient_id=patient_id,
             patient_name=metadata.get("patient_name"),
             patient_birth_date=birth_date,
@@ -354,6 +357,7 @@ def handle_store(event):
         if metadata.get("modality") == "US":
             measurement = DicomMeasurement(
                 dicom_image_id=image.id,
+                clinic_id=clinic_id,
                 patient_id=patient_id,
                 study_instance_uid=study_instance_uid,
                 measurement_type="Study",

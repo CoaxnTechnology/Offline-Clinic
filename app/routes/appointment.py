@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models import Appointment, Patient, Admin, DicomImage
 from app.extensions import db
-from app.utils.decorators import require_role
+from app.utils.decorators import require_role, get_current_clinic_id, verify_clinic_access
 from app.utils.audit import log_audit
 from datetime import datetime, date
 from app.routes.patient import _patient_to_dict  # Reuse full patient formatter
@@ -66,7 +66,10 @@ def list_appointments():
         limit = 20
 
     # Step 3: Start building query (exclude soft-deleted - PDF spec §9)
+    clinic_id, is_super = get_current_clinic_id()
     query = Appointment.query.filter(Appointment.deleted_at.is_(None))
+    if not is_super and clinic_id:
+        query = query.filter(Appointment.clinic_id == clinic_id)
 
     # Step 4: Apply date filter (default: today)
     try:
@@ -200,6 +203,9 @@ def list_with_doctor_appointments_for_consultant():
     if limit < 1 or limit > 100:
         limit = 20
 
+    # Clinic isolation
+    clinic_id, is_super = get_current_clinic_id()
+
     # Base query: this doctor, all statuses except Completed, not deleted
     filter_date_obj = date.today()
     query = Appointment.query.filter(
@@ -208,6 +214,8 @@ def list_with_doctor_appointments_for_consultant():
         Appointment.status != "Completed",
         Appointment.date == filter_date_obj,
     )
+    if not is_super and clinic_id:
+        query = query.filter(Appointment.clinic_id == clinic_id)
 
     total = query.count()
 
@@ -278,6 +286,13 @@ def get_appointment(appointment_id):
     ).first()
     if not appointment:
         return jsonify({"success": False, "error": "Appointment not found"}), 404
+
+    # Clinic isolation
+    clinic_id, is_super = get_current_clinic_id()
+    denied = verify_clinic_access(appointment, clinic_id, is_super)
+    if denied:
+        return denied
+
     patient = (
         Patient.query.filter_by(id=appointment.patient_id)
         .filter(Patient.deleted_at.is_(None))
@@ -407,8 +422,12 @@ def create_appointment():
     try:
         from app.models import Visit
 
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+
         appointment = Appointment(
             patient_id=data["patient_id"],
+            clinic_id=clinic_id,
             doctor=doctor_name,
             date=appointment_date,
             time=data["time"],
@@ -421,6 +440,7 @@ def create_appointment():
         # Create Visit/Order for this appointment (PDF spec: One Visit = One Study = One Report)
         visit = Visit(
             appointment_id=appointment.id,
+            clinic_id=clinic_id,
             patient_id=appointment.patient_id,
             visit_date=appointment_date,
             visit_status="scheduled",
@@ -482,6 +502,12 @@ def update_appointment(appointment_id):
     appointment = Appointment.query.get(appointment_id)
     if not appointment:
         return jsonify({"success": False, "error": "Appointment not found"}), 404
+
+    # Clinic isolation
+    clinic_id, is_super = get_current_clinic_id()
+    denied = verify_clinic_access(appointment, clinic_id, is_super)
+    if denied:
+        return denied
 
     # Step 2: Get update data
     data = request.get_json()
@@ -568,6 +594,12 @@ def update_appointment_status(appointment_id):
     if not appointment:
         return jsonify({"success": False, "error": "Appointment not found"}), 404
 
+    # Clinic isolation
+    clinic_id, is_super = get_current_clinic_id()
+    denied = verify_clinic_access(appointment, clinic_id, is_super)
+    if denied:
+        return denied
+
     # Step 2: Get status from request
     data = request.get_json()
     if not data:
@@ -643,6 +675,12 @@ def delete_appointment(appointment_id):
     if not appointment:
         return jsonify({"success": False, "error": "Appointment not found"}), 404
 
+    # Clinic isolation
+    clinic_id, is_super = get_current_clinic_id()
+    denied = verify_clinic_access(appointment, clinic_id, is_super)
+    if denied:
+        return denied
+
     appointment_info = {
         "id": appointment.id,
         "patient_id": appointment.patient_id,
@@ -700,6 +738,9 @@ def schedule_appointments():
             }
         ), 400
 
+    # Clinic isolation
+    clinic_id, is_super = get_current_clinic_id()
+
     # Step 3: Validate and create appointments
     created = []
     errors = []
@@ -752,6 +793,7 @@ def schedule_appointments():
             # Create appointment
             appointment = Appointment(
                 patient_id=apt_data["patient_id"],
+                clinic_id=clinic_id,
                 doctor=apt_data["doctor"],
                 date=appointment_date,
                 time=apt_data["time"],

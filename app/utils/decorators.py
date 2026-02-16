@@ -3,6 +3,25 @@ from flask import jsonify
 from flask_jwt_extended import get_jwt_identity, get_jwt
 from app.models import Admin
 
+
+def get_current_clinic_id():
+    """Returns (clinic_id, is_super_admin) from JWT claims."""
+    claims = get_jwt()
+    is_super = claims.get("is_super_admin", False)
+    if is_super:
+        return None, True
+    return claims.get("clinic_id"), False
+
+
+def verify_clinic_access(record, clinic_id, is_super):
+    """Returns None if OK, or (jsonify, 404) if record doesn't belong to clinic."""
+    if is_super or not hasattr(record, 'clinic_id'):
+        return None
+    if record.clinic_id != clinic_id:
+        return jsonify({'success': False, 'error': 'Not found'}), 404
+    return None
+
+
 def require_role(*roles):
     """
     Decorator to require specific roles

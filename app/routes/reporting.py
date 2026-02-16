@@ -6,7 +6,7 @@ from flask import Blueprint, request, jsonify, send_file, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.extensions import db
 from app.models import DicomImage, Patient
-from app.utils.decorators import require_role
+from app.utils.decorators import require_role, get_current_clinic_id, verify_clinic_access
 from app.utils.audit import log_audit
 from app.services.report_service import (
     create_report,
@@ -79,13 +79,17 @@ def list_reports_endpoint():
                 'error': 'Invalid status. Must be: completed, generating, or failed'
             }), 400
         
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+
         # Get reports
         result = list_reports(
             patient_id=patient_id,
             study_instance_uid=study_instance_uid,
             status=status,
             page=page,
-            limit=limit
+            limit=limit,
+            clinic_id=clinic_id if not is_super else None
         )
         
         return jsonify({
@@ -188,6 +192,9 @@ def generate_report():
             if study_images:
                 visit = Visit.query.filter_by(study_instance_uid=study_images.study_instance_uid).first()
         
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+
         # Create report record
         report = create_report(
             study_instance_uid=study_instance_uid,
@@ -198,7 +205,8 @@ def generate_report():
             template_id=template_id,
             template_data=template_data,
             language=language,
-            visit_id=visit.id if visit else None
+            visit_id=visit.id if visit else None,
+            clinic_id=clinic_id
         )
         
         db.session.commit()
@@ -279,12 +287,18 @@ def get_report(report_id):
                 'success': False,
                 'error': 'Report not found'
             }), 404
-        
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(report, clinic_id, is_super)
+        if denied:
+            return denied
+
         return jsonify({
             'success': True,
             'data': report.to_dict()
         })
-    
+
     except Exception as e:
         logger.error(f"Error getting report {report_id}: {e}", exc_info=True)
         error_msg = 'Failed to get report' if not current_app.debug else str(e)
@@ -305,12 +319,18 @@ def get_report_by_number_endpoint(report_number):
                 'success': False,
                 'error': 'Report not found'
             }), 404
-        
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(report, clinic_id, is_super)
+        if denied:
+            return denied
+
         return jsonify({
             'success': True,
             'data': report.to_dict()
         })
-    
+
     except Exception as e:
         logger.error(f"Error getting report {report_number}: {e}", exc_info=True)
         error_msg = 'Failed to get report' if not current_app.debug else str(e)
@@ -331,7 +351,13 @@ def download_report(report_id):
                 'success': False,
                 'error': 'Report not found'
             }), 404
-        
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(report, clinic_id, is_super)
+        if denied:
+            return denied
+
         if report.status != 'completed':
             return jsonify({
                 'success': False,
@@ -385,7 +411,13 @@ def get_report_status(report_id):
                 'success': False,
                 'error': 'Report not found'
             }), 404
-        
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(report, clinic_id, is_super)
+        if denied:
+            return denied
+
         status_data = {
             'report_id': report.id,
             'report_number': report.report_number,
@@ -429,6 +461,13 @@ def delete_report_endpoint(report_id):
         report = Report.query.get(report_id)
         if not report:
             return jsonify({'success': False, 'error': 'Report not found'}), 404
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(report, clinic_id, is_super)
+        if denied:
+            return denied
+
         if report.lifecycle_state in ('validated', 'archived'):
             return jsonify({
                 'success': False,

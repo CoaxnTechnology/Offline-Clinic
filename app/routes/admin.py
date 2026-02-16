@@ -3,6 +3,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from app.extensions import db
 from app.models import Admin, Clinic
+from app.utils.decorators import get_current_clinic_id, verify_clinic_access
 from app.utils.audit import log_audit
 from app.services.email_service import send_welcome_email
 from app.config import Config
@@ -26,8 +27,11 @@ def list_users():
     When mounted at /api/doctors -> list doctors
     When mounted at /api/receptionists -> list receptionists.
     """
+    clinic_id, is_super = get_current_clinic_id()
     role = "doctor" if request.blueprint == "admin" else "receptionist"
     query = Admin.query.filter_by(role=role, is_super_admin=False)
+    if not is_super and clinic_id:
+        query = query.filter(Admin.clinic_id == clinic_id)
     items = []
     for a in query.all():
         items.append(
@@ -136,6 +140,13 @@ def get_user(admin_id):
     admin = Admin.query.get(admin_id)
     if not admin or admin.is_super_admin:
         return jsonify({"success": False, "error": "User not found"}), 404
+
+    # Clinic isolation
+    clinic_id, is_super = get_current_clinic_id()
+    denied = verify_clinic_access(admin, clinic_id, is_super)
+    if denied:
+        return denied
+
     return (
         jsonify(
             {
@@ -173,6 +184,12 @@ def update_user(admin_id):
     admin = Admin.query.get(admin_id)
     if not admin or admin.is_super_admin:
         return jsonify({"success": False, "error": "User not found"}), 404
+
+    # Clinic isolation
+    clinic_id, is_super = get_current_clinic_id()
+    denied = verify_clinic_access(admin, clinic_id, is_super)
+    if denied:
+        return denied
 
     data = request.get_json() or {}
 

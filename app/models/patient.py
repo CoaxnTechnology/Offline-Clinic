@@ -55,29 +55,31 @@ class Patient(db.Model, TimestampMixin):
         return f"<Patient {self.first_name} {self.last_name} ({self.id})>"
 
     @classmethod
-    def generate_new_id(cls):
+    def generate_new_id(cls, clinic_id):
         """
-        Generate next patient ID like PAT001, PAT002, PAT003...
-        Always uses PAT prefix with 3-digit zero-padded number.
-        Finds the highest existing number to avoid gaps.
+        Generate next patient ID scoped to a clinic.
+        Format: C{clinic_id}-PAT{number:03d} (e.g. C1-PAT001, C2-PAT001)
+        Each clinic starts numbering independently from PAT001.
         """
-        # Get all patient IDs that start with PAT
-        all_patients = cls.query.filter(cls.id.like('PAT%')).all()
-        
+        prefix = f"C{clinic_id}-PAT"
+        # Get all patient IDs for this clinic
+        all_patients = cls.query.filter(cls.id.like(f'{prefix}%')).all()
+
         if not all_patients:
-            return "PAT001"
-        
+            return f"{prefix}001"
+
         # Extract all numeric suffixes and find the maximum
         max_number = 0
+        pattern = re.compile(rf'^C{clinic_id}-PAT(\d+)$')
         for patient in all_patients:
-            match = re.search(r'PAT(\d+)$', patient.id)
+            match = pattern.match(patient.id)
             if match:
                 try:
                     num = int(match.group(1))
                     max_number = max(max_number, num)
                 except ValueError:
                     continue
-        
+
         # Generate next ID with 3-digit padding
         next_number = max_number + 1
-        return f"PAT{next_number:03d}"
+        return f"{prefix}{next_number:03d}"

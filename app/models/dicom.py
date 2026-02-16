@@ -121,6 +121,9 @@ class DicomMeasurement(db.Model, TimestampMixin):
     __tablename__ = "dicom_measurements"
 
     id = db.Column(db.Integer, primary_key=True)
+    clinic_id = db.Column(
+        db.Integer, db.ForeignKey("clinics.id"), nullable=True, index=True
+    )
 
     # Link to DICOM Image
     dicom_image_id = db.Column(

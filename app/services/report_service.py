@@ -30,7 +30,8 @@ def create_report(
     template_id: Optional[int] = None,
     template_data: Optional[Dict[str, Any]] = None,
     language: str = 'en',
-    visit_id: Optional[int] = None
+    visit_id: Optional[int] = None,
+    clinic_id: Optional[int] = None
 ) -> Report:
     """
     Create a new report record
@@ -78,6 +79,7 @@ def create_report(
     report = Report(
         report_number=report_number,
         study_instance_uid=study_instance_uid,
+        clinic_id=clinic_id,
         patient_id=patient_id,
         patient_name=patient_name,
         report_date=datetime.now().date(),
@@ -160,23 +162,29 @@ def list_reports(
     study_instance_uid: Optional[str] = None,
     status: Optional[str] = None,
     page: int = 1,
-    limit: int = 20
+    limit: int = 20,
+    clinic_id: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     List reports with pagination and filters
-    
+
     Args:
         patient_id: Filter by patient ID
         study_instance_uid: Filter by study UID
         status: Filter by status
         page: Page number
         limit: Items per page
-    
+        clinic_id: Filter by clinic ID (None = no filter / super admin)
+
     Returns:
         dict: Reports and pagination info
     """
     query = Report.query
-    
+
+    # Clinic isolation
+    if clinic_id is not None:
+        query = query.filter_by(clinic_id=clinic_id)
+
     # Apply filters
     if patient_id:
         query = query.filter_by(patient_id=patient_id)

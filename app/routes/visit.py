@@ -6,7 +6,7 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.extensions import db
 from app.models import Visit, Appointment, Patient, Admin
-from app.utils.decorators import require_role
+from app.utils.decorators import require_role, get_current_clinic_id, verify_clinic_access
 from app.utils.audit import log_audit
 import logging
 from datetime import datetime
@@ -38,8 +38,11 @@ def list_visits():
         visit_status = request.args.get('visit_status')
         date_str = request.args.get('date')
         
+        clinic_id, is_super = get_current_clinic_id()
         query = Visit.query.filter_by(deleted_at=None)
-        
+        if not is_super and clinic_id:
+            query = query.filter(Visit.clinic_id == clinic_id)
+
         if patient_id:
             query = query.filter_by(patient_id=patient_id)
         if appointment_id:
@@ -92,7 +95,13 @@ def get_visit(visit_id):
                 'success': False,
                 'error': 'Visit not found'
             }), 404
-        
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(visit, clinic_id, is_super)
+        if denied:
+            return denied
+
         return jsonify({
             'success': True,
             'data': visit.to_dict()
@@ -123,7 +132,13 @@ def update_visit(visit_id):
                 'success': False,
                 'error': 'Visit not found'
             }), 404
-        
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(visit, clinic_id, is_super)
+        if denied:
+            return denied
+
         data = request.get_json() or {}
         
         # Update allowed fields

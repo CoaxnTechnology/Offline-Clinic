@@ -17,6 +17,9 @@ class Prescription(db.Model, TimestampMixin):
     __tablename__ = "prescriptions"
 
     id = db.Column(db.Integer, primary_key=True)
+    clinic_id = db.Column(
+        db.Integer, db.ForeignKey("clinics.id"), nullable=True, index=True
+    )
 
     # Patient reference
     patient_id = db.Column(
