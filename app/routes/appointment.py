@@ -2,9 +2,13 @@ from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models import Appointment, Patient, Admin, DicomImage
 from app.extensions import db
-from app.utils.decorators import require_role, get_current_clinic_id, verify_clinic_access
+from app.utils.decorators import (
+    require_role,
+    get_current_clinic_id,
+    verify_clinic_access,
+)
 from app.utils.audit import log_audit
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from app.routes.patient import _patient_to_dict  # Reuse full patient formatter
 
 appointment_bp = Blueprint("appointment", __name__, url_prefix="/api/appointments")
@@ -27,6 +31,11 @@ def list_appointments():
     page = request.args.get("page", 1, type=int)
     limit = request.args.get("limit", 20, type=int)
     filter_date = request.args.get("date", type=str)  # Format: YYYY-MM-DD
+    date_from = request.args.get("date_from", type=str)  # Format: YYYY-MM-DD
+    date_to = request.args.get("date_to", type=str)  # Format: YYYY-MM-DD
+    date_filter = request.args.get(
+        "date_filter", type=str
+    )  # today, yesterday, tomorrow, all
     patient_id = request.args.get("patient_id", type=str)
     doctor = request.args.get("doctor", type=str)
     doctor_id = request.args.get("doctor_id", type=int)
@@ -71,15 +80,50 @@ def list_appointments():
     if not is_super and clinic_id:
         query = query.filter(Appointment.clinic_id == clinic_id)
 
-    # Step 4: Apply date filter (default: today)
+    # Step 4: Apply date filter (supports multiple modes)
     try:
-        if filter_date:
-            # Parse provided date
+        today = date.today()
+
+        if date_filter:
+            # Quick filters: today, yesterday, tomorrow, all
+            date_filter = date_filter.lower()
+            if date_filter == "today":
+                query = query.filter(Appointment.date == today)
+            elif date_filter == "yesterday":
+                query = query.filter(Appointment.date == today - timedelta(days=1))
+            elif date_filter == "tomorrow":
+                query = query.filter(Appointment.date == today + timedelta(days=1))
+            elif date_filter == "all":
+                pass  # No date filter - show all
+            else:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": "Invalid date_filter. Use: today, yesterday, tomorrow, all",
+                    }
+                ), 400
+        elif date_from and date_to:
+            # Date range: from -> to
+            date_from_obj = datetime.strptime(date_from, "%Y-%m-%d").date()
+            date_to_obj = datetime.strptime(date_to, "%Y-%m-%d").date()
+            query = query.filter(
+                Appointment.date >= date_from_obj, Appointment.date <= date_to_obj
+            )
+        elif date_from:
+            # From date onwards
+            date_from_obj = datetime.strptime(date_from, "%Y-%m-%d").date()
+            query = query.filter(Appointment.date >= date_from_obj)
+        elif date_to:
+            # Until date
+            date_to_obj = datetime.strptime(date_to, "%Y-%m-%d").date()
+            query = query.filter(Appointment.date <= date_to_obj)
+        elif filter_date:
+            # Single date (backward compatible)
             filter_date_obj = datetime.strptime(filter_date, "%Y-%m-%d").date()
+            query = query.filter(Appointment.date == filter_date_obj)
         else:
             # Default to today's date
-            filter_date_obj = date.today()
-        query = query.filter(Appointment.date == filter_date_obj)
+            query = query.filter(Appointment.date == today)
     except ValueError:
         return jsonify(
             {"success": False, "error": "Invalid date format. Use YYYY-MM-DD"}
