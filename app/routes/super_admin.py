@@ -21,6 +21,7 @@ super_admin_bp = Blueprint("super_admin", __name__, url_prefix="/api/super-admin
 
 from typing import Optional
 
+
 def _current_admin() -> Optional[Admin]:
     try:
         user_id = int(get_jwt_identity())
@@ -196,7 +197,11 @@ def create_clinic_with_doctor():
         db.session.commit()
 
         # 3) Send welcome email with set‑password link
-        base_url = Config.FRONTEND_BASE_URL or Config.PUBLIC_BASE_URL or "http://localhost:8080"
+        base_url = (
+            Config.FRONTEND_BASE_URL
+            or Config.PUBLIC_BASE_URL
+            or "http://localhost:8080"
+        )
         reset_link = f"{base_url.rstrip('/')}/reset-password/{token}"
         send_welcome_email(
             email=doctor.email,
@@ -266,3 +271,105 @@ def super_admin_health():
 
     return jsonify({"success": True, "message": "Super admin API OK"}), 200
 
+
+@super_admin_bp.route("/cleanup/patients", methods=["DELETE"])
+@jwt_required()
+def cleanup_all_patients():
+    """
+    Delete all patients and their related data.
+    WARNING: This will delete ALL patients, appointments, visits, DICOM images, prescriptions.
+    Only super admin can access this.
+    """
+    from app.models import Patient, Appointment, Visit, DicomImage, Prescription, Report
+
+    current = _current_admin()
+    err = _require_super_admin(current)
+    if err is not None:
+        return err
+
+    try:
+        # Count before deletion
+        patient_count = Patient.query.count()
+        appointment_count = Appointment.query.count()
+        visit_count = Visit.query.count()
+        dicom_count = DicomImage.query.count()
+        prescription_count = Prescription.query.count()
+        report_count = Report.query.count()
+
+        # Delete in correct order (foreign keys first)
+        Report.query.delete()
+        DicomImage.query.delete()
+        Prescription.query.delete()
+        Visit.query.delete()
+        Appointment.query.delete()
+        Patient.query.delete()
+
+        db.session.commit()
+
+        return jsonify(
+            {
+                "success": True,
+                "message": "All patient data cleaned successfully",
+                "deleted": {
+                    "patients": patient_count,
+                    "appointments": appointment_count,
+                    "visits": visit_count,
+                    "dicom_images": dicom_count,
+                    "prescriptions": prescription_count,
+                    "reports": report_count,
+                },
+            }
+        ), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": f"Cleanup failed: {str(e)}"}), 500
+
+
+@super_admin_bp.route("/cleanup/appointments", methods=["DELETE"])
+@jwt_required()
+def cleanup_all_appointments():
+    """
+    Delete all appointments and their related data.
+    WARNING: This will delete ALL appointments, visits, DICOM images, prescriptions.
+    Only super admin can access this.
+    """
+    from app.models import Appointment, Visit, DicomImage, Prescription, Report
+
+    current = _current_admin()
+    err = _require_super_admin(current)
+    if err is not None:
+        return err
+
+    try:
+        appointment_count = Appointment.query.count()
+        visit_count = Visit.query.count()
+        dicom_count = DicomImage.query.count()
+        prescription_count = Prescription.query.count()
+        report_count = Report.query.count()
+
+        Report.query.delete()
+        DicomImage.query.delete()
+        Prescription.query.delete()
+        Visit.query.delete()
+        Appointment.query.delete()
+
+        db.session.commit()
+
+        return jsonify(
+            {
+                "success": True,
+                "message": "All appointments cleaned successfully",
+                "deleted": {
+                    "appointments": appointment_count,
+                    "visits": visit_count,
+                    "dicom_images": dicom_count,
+                    "prescriptions": prescription_count,
+                    "reports": report_count,
+                },
+            }
+        ), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": f"Cleanup failed: {str(e)}"}), 500

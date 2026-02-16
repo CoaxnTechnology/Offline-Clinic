@@ -6,7 +6,7 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.extensions import db
 from app.models import ReportTemplate, Admin
-from app.utils.decorators import require_role
+from app.utils.decorators import require_role, get_current_clinic_id, verify_clinic_access
 from app.utils.audit import log_audit
 import logging
 import json
@@ -34,8 +34,11 @@ def list_templates():
         language = request.args.get('language')
         is_active = request.args.get('is_active')
         
+        clinic_id, is_super = get_current_clinic_id()
         query = ReportTemplate.query
-        
+        if not is_super and clinic_id:
+            query = query.filter(ReportTemplate.clinic_id == clinic_id)
+
         if template_type:
             query = query.filter_by(template_type=template_type)
         if category:
@@ -77,12 +80,18 @@ def get_template(template_id):
                 'success': False,
                 'error': 'Template not found'
             }), 404
-        
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(template, clinic_id, is_super)
+        if denied:
+            return denied
+
         return jsonify({
             'success': True,
             'data': template.to_dict()
         })
-    
+
     except Exception as e:
         logger.error(f"Error getting template {template_id}: {e}", exc_info=True)
         error_msg = 'Failed to get template' if not current_app.debug else str(e)
@@ -127,10 +136,14 @@ def create_template():
                 'error': 'fields must be a list of field definitions'
             }), 400
         
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+
         # Create template
         template = ReportTemplate(
             name=data['name'],
             code=data['code'],
+            clinic_id=clinic_id,
             template_type=data['template_type'],
             category=data['category'],
             language=data.get('language', 'en'),
@@ -179,7 +192,13 @@ def update_template(template_id):
                 'success': False,
                 'error': 'Template not found'
             }), 404
-        
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(template, clinic_id, is_super)
+        if denied:
+            return denied
+
         data = request.get_json() or {}
         
         # Update allowed fields

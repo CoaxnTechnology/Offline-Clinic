@@ -196,6 +196,21 @@ def create_app(config_name=None):
             Clinic,
         )  # This is essential
 
+        # Auto-add missing clinic_id columns (safe: IF NOT EXISTS)
+        try:
+            from sqlalchemy import text
+            stmts = [
+                "ALTER TABLE prescriptions ADD COLUMN IF NOT EXISTS clinic_id INTEGER REFERENCES clinics(id)",
+                "ALTER TABLE dicom_measurements ADD COLUMN IF NOT EXISTS clinic_id INTEGER REFERENCES clinics(id)",
+            ]
+            for stmt in stmts:
+                db.session.execute(text(stmt))
+            db.session.commit()
+            logger.info("Schema check: clinic_id columns ensured on prescriptions & dicom_measurements")
+        except Exception as e:
+            db.session.rollback()
+            logger.warning(f"Schema auto-migration skipped: {e}")
+
         # Register blueprints
         from .routes import (
             auth_bp,

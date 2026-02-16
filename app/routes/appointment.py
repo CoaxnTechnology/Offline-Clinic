@@ -716,11 +716,9 @@ def update_appointment_status(appointment_id):
 @require_role("receptionist", "doctor")
 def delete_appointment(appointment_id):
     """
-    Soft-delete appointment (PDF spec §9: no hard deletion of medical data).
+    Hard-delete appointment and related records.
     Access: receptionist, doctor
     """
-    from datetime import datetime as dt
-
     appointment = Appointment.query.filter(
         Appointment.id == appointment_id, Appointment.deleted_at.is_(None)
     ).first()
@@ -740,7 +738,7 @@ def delete_appointment(appointment_id):
         "time": appointment.time,
     }
     try:
-        appointment.deleted_at = dt.utcnow()
+        db.session.delete(appointment)
         db.session.commit()
         return jsonify(
             {

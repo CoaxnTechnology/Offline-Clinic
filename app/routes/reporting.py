@@ -500,7 +500,13 @@ def validate_report_endpoint(report_id):
         report = Report.query.get(report_id)
         if not report:
             return jsonify({'success': False, 'error': 'Report not found'}), 404
-        
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(report, clinic_id, is_super)
+        if denied:
+            return denied
+
         # Check if report is already validated/archived
         if report.lifecycle_state not in (None, 'draft'):
             return jsonify({

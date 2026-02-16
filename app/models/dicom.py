@@ -68,9 +68,9 @@ class DicomImage(db.Model, TimestampMixin):
     dicom_metadata = db.Column(db.Text)  # Store additional DICOM tags as JSON
 
     # Relationships
-    patient = db.relationship("Patient", backref="dicom_images", lazy=True)
-    visit = db.relationship("Visit", backref="dicom_images", lazy=True)
-    appointment = db.relationship("Appointment", backref="dicom_images", lazy=True)
+    patient = db.relationship("Patient", backref=db.backref("dicom_images", cascade="all, delete-orphan"), lazy=True)
+    visit = db.relationship("Visit", backref=db.backref("dicom_images", cascade="all, delete-orphan"), lazy=True)
+    appointment = db.relationship("Appointment", backref=db.backref("dicom_images", cascade="all, delete-orphan"), lazy=True)
 
     def __repr__(self):
         return f"<DicomImage {self.sop_instance_uid} - {self.patient_name}>"
@@ -144,8 +144,8 @@ class DicomMeasurement(db.Model, TimestampMixin):
     measurement_data = db.Column(db.Text)  # JSON string for complex measurements
 
     # Relationships
-    dicom_image = db.relationship("DicomImage", backref="measurements", lazy=True)
-    patient = db.relationship("Patient", backref="dicom_measurements", lazy=True)
+    dicom_image = db.relationship("DicomImage", backref=db.backref("measurements", cascade="all, delete-orphan"), lazy=True)
+    patient = db.relationship("Patient", backref=db.backref("dicom_measurements", cascade="all, delete-orphan"), lazy=True)
 
     def __repr__(self):
         return f"<DicomMeasurement {self.measurement_type}: {self.measurement_value}>"

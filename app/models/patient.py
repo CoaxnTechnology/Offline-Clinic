@@ -48,8 +48,8 @@ class Patient(db.Model, TimestampMixin):
     # Soft delete (no hard deletion of medical data - PDF spec §9)
     deleted_at = db.Column(db.DateTime, nullable=True, index=True)
 
-    # Relationships
-    appointments = db.relationship('Appointment', backref='patient', lazy='dynamic')
+    # Relationships (cascade delete so hard-delete removes all child records)
+    appointments = db.relationship('Appointment', backref='patient', lazy='dynamic', cascade='all, delete-orphan')
     
     def __repr__(self):
         return f"<Patient {self.first_name} {self.last_name} ({self.id})>"

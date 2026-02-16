@@ -49,8 +49,8 @@ class Prescription(db.Model, TimestampMixin):
     )
 
     # Relationships
-    patient = db.relationship("Patient", backref="prescriptions", lazy=True)
-    visit = db.relationship("Visit", backref="prescription", lazy=True)
+    patient = db.relationship("Patient", backref=db.backref("prescriptions", cascade="all, delete-orphan"), lazy=True)
+    visit = db.relationship("Visit", backref=db.backref("prescription", cascade="all, delete-orphan"), lazy=True)
     doctor = db.relationship(
         "Admin", foreign_keys=[created_by], backref="prescriptions", lazy=True
     )

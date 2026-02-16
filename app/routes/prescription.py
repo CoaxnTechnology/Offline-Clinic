@@ -7,7 +7,7 @@ from flask import Blueprint, request, jsonify, send_file, abort
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.extensions import db
 from app.models import Patient, Prescription, Admin, Visit
-from app.utils.decorators import require_role
+from app.utils.decorators import require_role, get_current_clinic_id, verify_clinic_access
 from app.utils.audit import log_audit
 from app.utils.pdf_utils import generate_prescription_pdf
 import os
@@ -152,9 +152,13 @@ def create_prescription():
         if not doctor:
             return jsonify({"success": False, "error": "Doctor not found"}), 404
 
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+
         # Create prescription
         prescription = Prescription(
             patient_id=patient_id,
+            clinic_id=clinic_id,
             visit_id=visit_id,
             medicine=medicine,
             dosage=dosage,
@@ -234,6 +238,12 @@ def delete_prescription(prescription_id):
                 }
             ), 404
 
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(prescription, clinic_id, is_super)
+        if denied:
+            return denied
+
         # Remove PDF file from disk (resolve relative path if needed)
         if prescription.pdf_path:
             from app.config import Config
@@ -290,6 +300,12 @@ def get_prescription(prescription_id):
                 }
             ), 404
 
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(prescription, clinic_id, is_super)
+        if denied:
+            return denied
+
         return jsonify({"success": True, "data": prescription.to_dict()}), 200
 
     except Exception as e:
@@ -313,6 +329,12 @@ def download_prescription_pdf(prescription_id):
                     "error": f"Prescription with ID {prescription_id} not found",
                 }
             ), 404
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(prescription, clinic_id, is_super)
+        if denied:
+            return denied
 
         from app.config import Config
 
@@ -392,6 +414,12 @@ def get_patient_prescriptions(patient_id):
                 {"success": False, "error": f"Patient with ID {patient_id} not found"}
             ), 404
 
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(patient, clinic_id, is_super)
+        if denied:
+            return denied
+
         # Validate pagination
         try:
             page = request.args.get("page", 1, type=int)
@@ -452,6 +480,12 @@ def get_appointment_prescription(appointment_id):
                     "error": f"Visit for appointment {appointment_id} not found",
                 }
             ), 404
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(visit, clinic_id, is_super)
+        if denied:
+            return denied
 
         # Visit → Prescription (one-to-one via backref)
         prescription = visit.prescription

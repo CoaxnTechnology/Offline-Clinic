@@ -1,6 +1,4 @@
-"""
-Clinic Model for Multi-Tenant Support (Free - No Subscription)
-"""
+
 from datetime import datetime
 from app.extensions import db
 

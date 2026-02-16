@@ -67,9 +67,9 @@ class Visit(db.Model, TimestampMixin):
 
     # Relationships
     appointment = db.relationship(
-        "Appointment", backref="visit", uselist=False, lazy=True
+        "Appointment", backref=db.backref("visit", uselist=False, cascade="all, delete-orphan"), lazy=True
     )
-    patient = db.relationship("Patient", backref="visits", lazy=True)
+    patient = db.relationship("Patient", backref=db.backref("visits", cascade="all, delete-orphan"), lazy=True)
     creator = db.relationship(
         "Admin", foreign_keys=[created_by], backref="created_visits", lazy=True
     )

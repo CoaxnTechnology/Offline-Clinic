@@ -59,8 +59,8 @@ class Report(db.Model, TimestampMixin):
     notes = db.Column(db.Text)
     
     # Relationships
-    visit = db.relationship('Visit', backref='report', uselist=False, lazy=True)
-    patient = db.relationship('Patient', backref='reports', lazy=True)
+    visit = db.relationship('Visit', backref=db.backref('report', uselist=False, cascade='all, delete-orphan'), lazy=True)
+    patient = db.relationship('Patient', backref=db.backref('reports', cascade='all, delete-orphan'), lazy=True)
     template = db.relationship('ReportTemplate', backref='reports', lazy=True)
     generator = db.relationship('Admin', foreign_keys=[generated_by], backref='generated_reports', lazy=True)
     validator = db.relationship('Admin', foreign_keys=[validated_by], lazy=True)

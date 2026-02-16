@@ -12,7 +12,7 @@ import logging
 
 from app.extensions import db
 from app.models import Patient, Appointment, DicomImage, DicomMeasurement
-from app.utils.decorators import require_role
+from app.utils.decorators import require_role, get_current_clinic_id, verify_clinic_access
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +105,9 @@ def list_studies():
                 {"success": False, "error": "Invalid patient_id format"}
             ), 400
 
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+
         # Query distinct studies (group by study_instance_uid)
         query = db.session.query(
             DicomImage.study_instance_uid,
@@ -124,6 +127,9 @@ def list_studies():
         ).group_by(DicomImage.study_instance_uid)
 
         # Apply filters
+        if not is_super and clinic_id:
+            query = query.filter(DicomImage.clinic_id == clinic_id)
+
         if patient_id:
             query = query.filter(DicomImage.patient_id == patient_id)
 
@@ -224,6 +230,12 @@ def get_study(study_instance_uid):
 
         if not study_image:
             return jsonify({"success": False, "error": "Study not found"}), 404
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(study_image, clinic_id, is_super)
+        if denied:
+            return denied
 
         patient = (
             Patient.query.get(study_image.patient_id)
@@ -359,7 +371,11 @@ def list_images():
         if modality and len(modality) > 10:
             return jsonify({"success": False, "error": "Invalid modality format"}), 400
 
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
         query = DicomImage.query
+        if not is_super and clinic_id:
+            query = query.filter(DicomImage.clinic_id == clinic_id)
 
         # Apply filters
         if patient_id:
@@ -422,6 +438,12 @@ def get_image(image_id):
     try:
         image = DicomImage.query.get_or_404(image_id)
 
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(image, clinic_id, is_super)
+        if denied:
+            return denied
+
         # Get measurements for this image
         measurements = DicomMeasurement.query.filter_by(dicom_image_id=image_id).all()
         measurements_data = [m.to_dict() for m in measurements]
@@ -445,6 +467,12 @@ def get_image_file(image_id):
     """Download DICOM file - Production ready with security checks"""
     try:
         image = DicomImage.query.get_or_404(image_id)
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(image, clinic_id, is_super)
+        if denied:
+            return denied
 
         # Security: Validate file path to prevent directory traversal
         file_path = os.path.abspath(image.file_path)
@@ -477,6 +505,12 @@ def get_image_thumbnail(image_id):
     """Get thumbnail image - Production ready with caching"""
     try:
         image = DicomImage.query.get_or_404(image_id)
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(image, clinic_id, is_super)
+        if denied:
+            return denied
 
         if not image.thumbnail_path:
             return jsonify({"success": False, "error": "Thumbnail not available"}), 404
@@ -521,6 +555,13 @@ def send_mwl_for_appointment(appointment_id):
     try:
         # Production: Validate appointment exists
         appointment = Appointment.query.get_or_404(appointment_id)
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(appointment, clinic_id, is_super)
+        if denied:
+            return denied
+
         patient = Patient.query.get_or_404(appointment.patient_id)
 
         # Production: Check if DICOM servers are running
@@ -647,7 +688,11 @@ def list_measurements():
         study_instance_uid = request.args.get("study_instance_uid")
         measurement_type = request.args.get("measurement_type")
 
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
         query = DicomMeasurement.query
+        if not is_super and clinic_id:
+            query = query.filter(DicomMeasurement.clinic_id == clinic_id)
 
         # Apply filters
         if patient_id:
@@ -945,6 +990,12 @@ def get_patient_studies(patient_id):
 
         patient = Patient.query.get_or_404(patient_id)
 
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(patient, clinic_id, is_super)
+        if denied:
+            return denied
+
         # Group by study_instance_uid
         studies_query = (
             db.session.query(
@@ -1025,6 +1076,12 @@ def get_study_full(study_instance_uid):
 
         if not study_image:
             return jsonify({"success": False, "error": "Study not found"}), 404
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(study_image, clinic_id, is_super)
+        if denied:
+            return denied
 
         accession_number = study_image.accession_number
         dicom_patient_id = study_image.patient_id
@@ -1230,6 +1287,13 @@ def get_study_by_appointment(appointment_id):
         from app.models import Visit
 
         appointment = Appointment.query.get_or_404(appointment_id)
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(appointment, clinic_id, is_super)
+        if denied:
+            return denied
+
         patient = Patient.query.get_or_404(appointment.patient_id)
 
         visit = Visit.query.filter_by(appointment_id=appointment_id).first()
@@ -1373,6 +1437,13 @@ def get_images_by_appointment(appointment_id):
         from app.models import Visit
 
         appointment = Appointment.query.get_or_404(appointment_id)
+
+        # Clinic isolation
+        clinic_id, is_super = get_current_clinic_id()
+        denied = verify_clinic_access(appointment, clinic_id, is_super)
+        if denied:
+            return denied
+
         patient = Patient.query.get_or_404(appointment.patient_id)
 
         visit = Visit.query.filter_by(appointment_id=appointment_id).first()

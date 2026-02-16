@@ -573,10 +573,9 @@ def update_patient(patient_id):
 @require_role('receptionist', 'doctor')
 def delete_patient(patient_id):
     """
-    Soft-delete patient (PDF spec §9: no hard deletion of medical data).
+    Hard-delete patient and all related records.
     Access: receptionist, doctor
     """
-    from datetime import datetime as dt
     patient = Patient.query.filter_by(id=patient_id).filter(Patient.deleted_at.is_(None)).first()
     if not patient:
         return jsonify({
@@ -592,9 +591,10 @@ def delete_patient(patient_id):
 
     try:
         user_id = int(get_jwt_identity())
-        patient.deleted_at = dt.utcnow()
+        patient_name = f"{patient.first_name} {patient.last_name}"
+        db.session.delete(patient)
         db.session.commit()
-        log_audit('patient', 'delete', user_id=user_id, entity_id=patient_id, details={'name': f"{patient.first_name} {patient.last_name}"})
+        log_audit('patient', 'delete', user_id=user_id, entity_id=patient_id, details={'name': patient_name})
         return jsonify({
             'success': True,
             'message': f'Patient {patient_id} deleted successfully'
