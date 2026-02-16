@@ -591,6 +591,7 @@ def send_mwl_for_appointment(appointment_id):
             visit = Visit(
                 appointment_id=appointment_id,
                 patient_id=appointment.patient_id,
+                clinic_id=appointment.clinic_id,
                 visit_date=appointment.date,
                 visit_status="scheduled",
                 exam_type="OB/GYN Ultrasound",
