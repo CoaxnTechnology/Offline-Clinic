@@ -83,18 +83,22 @@ def list_appointments():
     # Step 4: Apply date filter (supports multiple modes)
     try:
         today = date.today()
+        filter_date_obj = today  # Default value for response
 
         if date_filter:
             # Quick filters: today, yesterday, tomorrow, all
             date_filter = date_filter.lower()
             if date_filter == "today":
                 query = query.filter(Appointment.date == today)
+                filter_date_obj = today
             elif date_filter == "yesterday":
                 query = query.filter(Appointment.date == today - timedelta(days=1))
+                filter_date_obj = today - timedelta(days=1)
             elif date_filter == "tomorrow":
                 query = query.filter(Appointment.date == today + timedelta(days=1))
+                filter_date_obj = today + timedelta(days=1)
             elif date_filter == "all":
-                pass  # No date filter - show all
+                filter_date_obj = None  # No specific date for "all"
             else:
                 return jsonify(
                     {
@@ -208,7 +212,7 @@ def list_appointments():
                 "has_next": appointments.has_next,
                 "has_prev": appointments.has_prev,
             },
-            "date": filter_date_obj.isoformat(),
+            "date": filter_date_obj.isoformat() if filter_date_obj else None,
         }
     ), 200
 
@@ -314,7 +318,7 @@ def list_with_doctor_appointments_for_consultant():
                 "has_next": appointments.has_next,
                 "has_prev": appointments.has_prev,
             },
-            "date": filter_date_obj.isoformat(),
+            "date": filter_date_obj.isoformat() if filter_date_obj else None,
         }
     ), 200
 
