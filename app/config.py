@@ -39,6 +39,10 @@ class Config:
         "FRONTEND_BASE_URL", os.getenv("PUBLIC_BASE_URL", "http://localhost:8080")
     )
 
+    # Super admin panel URL (separate from clinic dashboard)
+    # Example: http://localhost:5173 or https://admin.clinicalgynecologists.space
+    SUPER_ADMIN_BASE_URL = os.getenv("SUPER_ADMIN_BASE_URL", "http://localhost:5173")
+
     # DICOM Server Configuration
     # Defaults match your current machine setup: MWL=21102, Storage=21103
     DICOM_MWL_PORT = int(os.getenv("DICOM_MWL_PORT", "21102"))

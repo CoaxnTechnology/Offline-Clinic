@@ -202,10 +202,12 @@ def forgot_password():
     admin.reset_token_expiry = datetime.utcnow() + timedelta(hours=1)
     db.session.commit()
 
-    # Build reset link for frontend (path param style: /reset-password/<token>)
-    # Use FRONTEND_BASE_URL so it can be different from PUBLIC_BASE_URL (which is used for PDFs).
+    # Build reset link - super admins go to admin panel, others to clinic dashboard
     from app.config import Config
-    base_url = current_app.config.get('FRONTEND_BASE_URL') or Config.FRONTEND_BASE_URL
+    if admin.is_super_admin:
+        base_url = Config.SUPER_ADMIN_BASE_URL
+    else:
+        base_url = current_app.config.get('FRONTEND_BASE_URL') or Config.FRONTEND_BASE_URL
     reset_link = f"{base_url.rstrip('/')}/reset-password/{token}"
 
     send_password_reset_email(
