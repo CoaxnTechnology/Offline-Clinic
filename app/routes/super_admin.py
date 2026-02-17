@@ -53,31 +53,23 @@ def list_clinics():
         doctors = Admin.query.filter_by(clinic_id=c.id, role="doctor").all()
 
         # Flatten first doctor info
-        doctor_info = None
+        doctor_name = None
         if doctors:
             d = doctors[0]
-            doctor_info = {
-                "id": d.id,
-                "username": d.username,
-                "first_name": d.first_name,
-                "last_name": d.last_name,
-                "email": d.email,
-                "phone": d.phone,
-                "is_active": d.is_active,
-            }
+            doctor_name = f"{d.first_name} {d.last_name}".strip()
 
         data.append(
             {
                 "id": c.id,
-                "name": c.name,
-                "address": c.address,
-                "phone": c.phone,
+                "hospital_name": c.name,
+                "clinic_address": c.address,
+                "contact_number": c.phone,
                 "email": c.email,
-                "license_key": c.license_key,
-                "dicom_ae_title": c.dicom_ae_title,
+                "license_name": c.license_key,
+                "ae_title": c.dicom_ae_title,
                 "is_active": c.is_active,
                 "logo_path": c.logo_path,
-                "doctor": doctor_info,
+                "doctor_name": doctor_name,
             }
         )
 
@@ -138,6 +130,101 @@ def get_clinic(clinic_id):
             },
         }
     ), 200
+
+
+@super_admin_bp.route("/clinics/<int:clinic_id>", methods=["PUT"])
+@jwt_required()
+def update_clinic(clinic_id):
+    """Update clinic details. Access: super admin only."""
+    current = _current_admin()
+    err = _require_super_admin(current)
+    if err is not None:
+        return err
+
+    clinic = Clinic.query.get(clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    data = request.get_json() or {}
+
+    if "hospital_name" in data:
+        clinic.name = data["hospital_name"]
+    if "license_name" in data:
+        existing = Clinic.query.filter(Clinic.license_key == data["license_name"], Clinic.id != clinic_id).first()
+        if existing:
+            return jsonify({"success": False, "error": "License name already exists"}), 400
+        clinic.license_key = data["license_name"]
+    if "clinic_address" in data:
+        clinic.address = data["clinic_address"]
+    if "contact_number" in data:
+        clinic.phone = data["contact_number"]
+    if "email" in data:
+        clinic.email = data["email"]
+    if "is_active" in data:
+        clinic.is_active = bool(data["is_active"])
+
+    try:
+        db.session.commit()
+        log_audit("clinic", "update", user_id=current.id, entity_id=str(clinic_id), details=data)
+        return jsonify({
+            "success": True,
+            "data": {
+                "id": clinic.id,
+                "hospital_name": clinic.name,
+                "license_name": clinic.license_key,
+                "clinic_address": clinic.address,
+                "contact_number": clinic.phone,
+                "email": clinic.email,
+                "ae_title": clinic.dicom_ae_title,
+                "is_active": clinic.is_active,
+            },
+            "message": "Clinic updated successfully",
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": f"Failed to update clinic: {str(e)}"}), 500
+
+
+@super_admin_bp.route("/clinics/<int:clinic_id>", methods=["DELETE"])
+@jwt_required()
+def delete_clinic(clinic_id):
+    """Hard-delete a clinic and ALL its data. Access: super admin only."""
+    current = _current_admin()
+    err = _require_super_admin(current)
+    if err is not None:
+        return err
+
+    clinic = Clinic.query.get(clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    try:
+        from app.models import Patient, Appointment, Visit, DicomImage, DicomMeasurement, Prescription, Report, AuditLog
+        from sqlalchemy import text
+
+        clinic_name = clinic.name
+        admin_ids = [a.id for a in Admin.query.filter_by(clinic_id=clinic_id).all()]
+        if admin_ids:
+            AuditLog.query.filter(AuditLog.user_id.in_(admin_ids)).delete()
+        DicomMeasurement.query.filter_by(clinic_id=clinic_id).delete()
+        DicomImage.query.filter_by(clinic_id=clinic_id).delete()
+        Report.query.filter_by(clinic_id=clinic_id).delete()
+        Prescription.query.filter_by(clinic_id=clinic_id).delete()
+        Visit.query.filter_by(clinic_id=clinic_id).delete()
+        Appointment.query.filter_by(clinic_id=clinic_id).delete()
+        Patient.query.filter_by(clinic_id=clinic_id).delete()
+        Admin.query.filter_by(clinic_id=clinic_id).delete()
+        db.session.delete(clinic)
+        db.session.commit()
+
+        log_audit("clinic", "delete", user_id=current.id, entity_id=str(clinic_id), details={"clinic_name": clinic_name})
+        return jsonify({
+            "success": True,
+            "message": f"Clinic '{clinic_name}' and all its data deleted successfully",
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": f"Failed to delete clinic: {str(e)}"}), 500
 
 
 @super_admin_bp.route("/clinics", methods=["POST"])
