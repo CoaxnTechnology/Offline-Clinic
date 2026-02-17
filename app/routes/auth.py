@@ -241,12 +241,10 @@ def verify_reset_token():
         return jsonify({"success": False, "error": 'Field "token" is required'}), 400
 
     admin = Admin.query.filter_by(reset_token=token).first()
-    if (
-        not admin
-        or not admin.reset_token_expiry
-        or admin.reset_token_expiry < datetime.utcnow()
-    ):
-        return jsonify({"success": False, "error": "Invalid or expired token"}), 400
+    if not admin:
+        return jsonify({"success": False, "error": "Invalid token. Please request a new reset link."}), 400
+    if not admin.reset_token_expiry or admin.reset_token_expiry < datetime.utcnow():
+        return jsonify({"success": False, "error": "Token has expired. Please request a new reset link."}), 400
 
     return jsonify({"success": True, "message": "Token is valid"}), 200
 
@@ -270,12 +268,10 @@ def reset_password():
         ), 400
 
     admin = Admin.query.filter_by(reset_token=token).first()
-    if (
-        not admin
-        or not admin.reset_token_expiry
-        or admin.reset_token_expiry < datetime.utcnow()
-    ):
-        return jsonify({"success": False, "error": "Invalid or expired token"}), 400
+    if not admin:
+        return jsonify({"success": False, "error": "Invalid token. Please request a new reset link."}), 400
+    if not admin.reset_token_expiry or admin.reset_token_expiry < datetime.utcnow():
+        return jsonify({"success": False, "error": "Token has expired. Please request a new reset link."}), 400
 
     # Set new password and clear token
     admin.set_password(new_password)
@@ -304,12 +300,10 @@ def set_password():
         ), 400
 
     admin = Admin.query.filter_by(reset_token=token).first()
-    if (
-        not admin
-        or not admin.reset_token_expiry
-        or admin.reset_token_expiry < datetime.utcnow()
-    ):
-        return jsonify({"success": False, "error": "Invalid or expired token"}), 400
+    if not admin:
+        return jsonify({"success": False, "error": "Invalid token. Please request a new reset link."}), 400
+    if not admin.reset_token_expiry or admin.reset_token_expiry < datetime.utcnow():
+        return jsonify({"success": False, "error": "Token has expired. Please request a new reset link."}), 400
 
     admin.set_password(password)
     admin.reset_token = None
