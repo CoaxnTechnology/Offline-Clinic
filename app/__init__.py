@@ -219,17 +219,27 @@ def create_app(config_name=None):
             Clinic,
         )  # This is essential
 
-        # Auto-add missing clinic_id columns (safe: IF NOT EXISTS)
+        # Auto-add missing columns (safe: IF NOT EXISTS)
         try:
             from sqlalchemy import text
             stmts = [
                 "ALTER TABLE prescriptions ADD COLUMN IF NOT EXISTS clinic_id INTEGER REFERENCES clinics(id)",
                 "ALTER TABLE dicom_measurements ADD COLUMN IF NOT EXISTS clinic_id INTEGER REFERENCES clinics(id)",
+                # Reports table columns
+                "ALTER TABLE reports ADD COLUMN IF NOT EXISTS clinic_id INTEGER REFERENCES clinics(id)",
+                "ALTER TABLE reports ADD COLUMN IF NOT EXISTS lifecycle_state VARCHAR(20) DEFAULT 'draft' NOT NULL",
+                "ALTER TABLE reports ADD COLUMN IF NOT EXISTS validated_at TIMESTAMP",
+                "ALTER TABLE reports ADD COLUMN IF NOT EXISTS validated_by INTEGER REFERENCES admins(id)",
+                "ALTER TABLE reports ADD COLUMN IF NOT EXISTS accession_number VARCHAR(64)",
+                "ALTER TABLE reports ADD COLUMN IF NOT EXISTS image_count INTEGER DEFAULT 0",
+                "ALTER TABLE reports ADD COLUMN IF NOT EXISTS generation_task_id VARCHAR(100)",
+                # Clinic table columns
+                "ALTER TABLE clinics ADD COLUMN IF NOT EXISTS dicom_ae_title VARCHAR(16)",
             ]
             for stmt in stmts:
                 db.session.execute(text(stmt))
             db.session.commit()
-            logger.info("Schema check: clinic_id columns ensured on prescriptions & dicom_measurements")
+            logger.info("Schema check: all missing columns ensured")
         except Exception as e:
             db.session.rollback()
             logger.warning(f"Schema auto-migration skipped: {e}")
