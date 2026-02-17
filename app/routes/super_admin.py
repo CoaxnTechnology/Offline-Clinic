@@ -250,6 +250,57 @@ def create_clinic_with_doctor():
         )
 
 
+@super_admin_bp.route("/clinics/<int:clinic_id>", methods=["DELETE"])
+@jwt_required()
+def delete_clinic(clinic_id):
+    """
+    Hard-delete a clinic and ALL its data (doctors, patients, appointments, etc.).
+    Access: super admin only.
+    """
+    current = _current_admin()
+    err = _require_super_admin(current)
+    if err is not None:
+        return err
+
+    clinic = Clinic.query.get(clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    try:
+        from app.models import Patient, Appointment, Visit, DicomImage, DicomMeasurement, Prescription, Report
+
+        clinic_name = clinic.name
+
+        # Delete all clinic data in FK order
+        DicomMeasurement.query.filter_by(clinic_id=clinic_id).delete()
+        DicomImage.query.filter_by(clinic_id=clinic_id).delete()
+        Report.query.filter_by(clinic_id=clinic_id).delete()
+        Prescription.query.filter_by(clinic_id=clinic_id).delete()
+        Visit.query.filter_by(clinic_id=clinic_id).delete()
+        Appointment.query.filter_by(clinic_id=clinic_id).delete()
+        Patient.query.filter_by(clinic_id=clinic_id).delete()
+        Admin.query.filter_by(clinic_id=clinic_id).delete()
+        db.session.delete(clinic)
+        db.session.commit()
+
+        log_audit(
+            "clinic",
+            "delete",
+            user_id=current.id,
+            entity_id=str(clinic_id),
+            details={"clinic_name": clinic_name},
+        )
+
+        return jsonify({
+            "success": True,
+            "message": f"Clinic '{clinic_name}' and all its data deleted successfully",
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": f"Failed to delete clinic: {str(e)}"}), 500
+
+
 @super_admin_bp.route("/health", methods=["GET"])
 @jwt_required()
 def super_admin_health():
