@@ -314,7 +314,7 @@ clinic_bp = Blueprint("clinic", __name__, url_prefix="/api/clinic")
 @jwt_required()
 def get_current_clinic():
     """
-    Get current user's clinic details.
+    Get current user's clinic details with doctor info.
     Access: authenticated user.
     """
     current = _current_admin()
@@ -326,6 +326,23 @@ def get_current_clinic():
     clinic = Clinic.query.get(current.clinic_id)
     if not clinic:
         return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    # Get doctors for this clinic
+    doctors = Admin.query.filter_by(clinic_id=clinic.id, role="doctor").all()
+
+    # Flatten first doctor info (if exists)
+    doctor_info = None
+    if doctors:
+        d = doctors[0]
+        doctor_info = {
+            "id": d.id,
+            "username": d.username,
+            "first_name": d.first_name,
+            "last_name": d.last_name,
+            "email": d.email,
+            "phone": d.phone,
+            "is_active": d.is_active,
+        }
 
     return jsonify(
         {
@@ -339,7 +356,10 @@ def get_current_clinic():
                 "license_key": clinic.license_key,
                 "dicom_ae_title": clinic.dicom_ae_title,
                 "is_active": clinic.is_active,
-                "has_logo": bool(clinic.logo_path),
+                "logo_path": clinic.logo_path,
+                "header_text": clinic.header_text,
+                "footer_text": clinic.footer_text,
+                "doctor": doctor_info,
             },
         }
     ), 200

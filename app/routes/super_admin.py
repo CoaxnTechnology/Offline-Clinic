@@ -40,7 +40,7 @@ def _require_super_admin(admin: Optional[Admin]):
 @jwt_required()
 def list_clinics():
     """
-    List clinics with doctors for super admin.
+    List clinics with doctor info for super admin.
     """
     current = _current_admin()
     err = _require_super_admin(current)
@@ -51,8 +51,12 @@ def list_clinics():
     data = []
     for c in clinics:
         doctors = Admin.query.filter_by(clinic_id=c.id, role="doctor").all()
-        doctors_list = [
-            {
+
+        # Flatten first doctor info
+        doctor_info = None
+        if doctors:
+            d = doctors[0]
+            doctor_info = {
                 "id": d.id,
                 "username": d.username,
                 "first_name": d.first_name,
@@ -61,8 +65,7 @@ def list_clinics():
                 "phone": d.phone,
                 "is_active": d.is_active,
             }
-            for d in doctors
-        ]
+
         data.append(
             {
                 "id": c.id,
@@ -73,8 +76,8 @@ def list_clinics():
                 "license_key": c.license_key,
                 "dicom_ae_title": c.dicom_ae_title,
                 "is_active": c.is_active,
-                "doctors": doctors_list,
-                "doctor_count": len(doctors_list),
+                "logo_path": c.logo_path,
+                "doctor": doctor_info,
             }
         )
 
@@ -85,7 +88,7 @@ def list_clinics():
 @jwt_required()
 def get_clinic(clinic_id):
     """
-    Get clinic details with doctors.
+    Get clinic details with doctor info.
     """
     current = _current_admin()
     err = _require_super_admin(current)
@@ -97,8 +100,12 @@ def get_clinic(clinic_id):
         return jsonify({"success": False, "error": "Clinic not found"}), 404
 
     doctors = Admin.query.filter_by(clinic_id=clinic.id, role="doctor").all()
-    doctors_list = [
-        {
+
+    # Flatten first doctor info
+    doctor_info = None
+    if doctors:
+        d = doctors[0]
+        doctor_info = {
             "id": d.id,
             "username": d.username,
             "first_name": d.first_name,
@@ -108,8 +115,6 @@ def get_clinic(clinic_id):
             "is_active": d.is_active,
             "created_at": d.created_at.isoformat() if d.created_at else None,
         }
-        for d in doctors
-    ]
 
     return jsonify(
         {
@@ -126,8 +131,7 @@ def get_clinic(clinic_id):
                 "logo_path": clinic.logo_path,
                 "header_text": clinic.header_text,
                 "footer_text": clinic.footer_text,
-                "doctors": doctors_list,
-                "doctor_count": len(doctors_list),
+                "doctor": doctor_info,
                 "created_at": clinic.created_at.isoformat()
                 if clinic.created_at
                 else None,
