@@ -307,6 +307,9 @@ def create_app(config_name=None):
             admin_bp, url_prefix="/api/receptionists", name="receptionist"
         )  # Alias
         app.register_blueprint(clinic_bp)  # /api/clinic
+        app.register_blueprint(
+            clinic_bp, url_prefix="/api/clinics", name="clinics"
+        )  # /api/clinics
         app.register_blueprint(dicom_bp)
         app.register_blueprint(reporting_bp)
         app.register_blueprint(prescription_bp)
