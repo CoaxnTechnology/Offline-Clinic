@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from app.extensions import db
@@ -310,176 +310,6 @@ def delete_user(admin_id):
 clinic_bp = Blueprint("clinic", __name__, url_prefix="/api/clinic")
 
 
-@clinic_bp.route("/logo", methods=["POST"])
-@jwt_required()
-@require_role("doctor")
-def upload_clinic_logo():
-    """
-    Upload logo for the current user's clinic.
-    Access: doctor only.
-
-    Multipart form data:
-        logo: Image file (jpg, png, svg, webp)
-    """
-    import os
-    from werkzeug.utils import secure_filename
-    from flask import current_app
-
-    current = _current_admin()
-    if not current.clinic_id:
-        return jsonify(
-            {"success": False, "error": "User is not associated with a clinic"}
-        ), 400
-
-    clinic = Clinic.query.get(current.clinic_id)
-    if not clinic:
-        return jsonify({"success": False, "error": "Clinic not found"}), 404
-
-    if "logo" not in request.files:
-        return jsonify({"success": False, "error": "No logo file provided"}), 400
-
-    file = request.files["logo"]
-    if file.filename == "":
-        return jsonify({"success": False, "error": "No file selected"}), 400
-
-    allowed_extensions = {".jpg", ".jpeg", ".png", ".svg", ".webp"}
-    ext = os.path.splitext(secure_filename(file.filename))[1].lower()
-    if ext not in allowed_extensions:
-        return jsonify(
-            {
-                "success": False,
-                "error": f"Invalid file type. Allowed: {', '.join(allowed_extensions)}",
-            }
-        ), 400
-
-    upload_folder = os.path.join(
-        current_app.config.get("PROJECT_ROOT", ""), "clinic_logos"
-    )
-    os.makedirs(upload_folder, exist_ok=True)
-
-    filename = f"clinic_{clinic.id}_logo{ext}"
-    filepath = os.path.join(upload_folder, filename)
-
-    try:
-        file.save(filepath)
-
-        relative_path = os.path.join("clinic_logos", filename)
-        clinic.logo_path = relative_path
-        db.session.commit()
-
-        log_audit(
-            "clinic",
-            "upload_logo",
-            user_id=current.id,
-            entity_id=str(clinic.id),
-            details={"filename": filename},
-        )
-
-        return jsonify(
-            {
-                "success": True,
-                "message": "Logo uploaded successfully",
-                "data": {
-                    "clinic_id": clinic.id,
-                    "logo_path": relative_path,
-                },
-            }
-        ), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify(
-            {"success": False, "error": f"Failed to upload logo: {str(e)}"}
-        ), 500
-
-
-@clinic_bp.route("/logo", methods=["GET"])
-@jwt_required()
-def get_clinic_logo():
-    """
-    Get current clinic's logo.
-    Access: authenticated user.
-    """
-    current = _current_admin()
-    if not current.clinic_id:
-        return jsonify(
-            {"success": False, "error": "User is not associated with a clinic"}
-        ), 400
-
-    clinic = Clinic.query.get(current.clinic_id)
-    if not clinic:
-        return jsonify({"success": False, "error": "Clinic not found"}), 404
-
-    if not clinic.logo_path:
-        return jsonify({"success": False, "error": "No logo set for this clinic"}), 404
-
-    from flask import send_from_directory
-    from app.config import Config
-
-    logo_full_path = os.path.join(Config.PROJECT_ROOT, clinic.logo_path)
-    logo_dir = os.path.dirname(logo_full_path)
-    logo_filename = os.path.basename(logo_full_path)
-
-    if not os.path.exists(logo_full_path):
-        return jsonify(
-            {"success": False, "error": "Logo file not found on server"}
-        ), 404
-
-    return send_from_directory(logo_dir, logo_filename)
-
-
-@clinic_bp.route("/logo", methods=["DELETE"])
-@jwt_required()
-@require_role("doctor")
-def delete_clinic_logo():
-    """
-    Delete current clinic's logo.
-    Access: doctor only.
-    """
-    import os
-    from flask import current_app
-
-    current = _current_admin()
-    if not current.clinic_id:
-        return jsonify(
-            {"success": False, "error": "User is not associated with a clinic"}
-        ), 400
-
-    clinic = Clinic.query.get(current.clinic_id)
-    if not clinic:
-        return jsonify({"success": False, "error": "Clinic not found"}), 404
-
-    if not clinic.logo_path:
-        return jsonify({"success": False, "error": "No logo set for this clinic"}), 404
-
-    logo_full_path = os.path.join(
-        current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
-    )
-
-    try:
-        if os.path.exists(logo_full_path):
-            os.remove(logo_full_path)
-
-        clinic.logo_path = None
-        db.session.commit()
-
-        log_audit(
-            "clinic",
-            "delete_logo",
-            user_id=current.id,
-            entity_id=str(clinic.id),
-            details={},
-        )
-
-        return jsonify({"success": True, "message": "Logo deleted successfully"}), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify(
-            {"success": False, "error": f"Failed to delete logo: {str(e)}"}
-        ), 500
-
-
 @clinic_bp.route("", methods=["GET"])
 @jwt_required()
 def get_current_clinic():
@@ -513,3 +343,159 @@ def get_current_clinic():
             },
         }
     ), 200
+
+
+@clinic_bp.route("", methods=["PUT"])
+@jwt_required()
+@require_role("doctor")
+def update_current_clinic():
+    """
+    Update current user's clinic details.
+    Access: doctor only.
+
+    Supports both JSON and multipart form data.
+    Multipart (for logo upload):
+        - logo: Image file (jpg, png, svg, webp)
+        - name: Clinic name
+        - address: Clinic address
+        - phone: Contact number
+        - email: Email address
+        - header_text: PDF header text
+        - footer_text: PDF footer text
+        - remove_logo: "true" to remove logo
+    """
+    import os
+    from werkzeug.utils import secure_filename
+
+    current = _current_admin()
+    if not current.clinic_id:
+        return jsonify(
+            {"success": False, "error": "User is not associated with a clinic"}
+        ), 400
+
+    clinic = Clinic.query.get(current.clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    # Check if multipart form data (logo upload)
+    if request.content_type and "multipart/form-data" in request.content_type:
+        # Handle multipart form data
+        name = request.form.get("name")
+        address = request.form.get("address")
+        phone = request.form.get("phone")
+        email = request.form.get("email")
+        header_text = request.form.get("header_text")
+        footer_text = request.form.get("footer_text")
+        remove_logo = request.form.get("remove_logo", "").lower() == "true"
+        logo_file = request.files.get("logo")
+
+        if name:
+            clinic.name = name
+        if address is not None:
+            clinic.address = address
+        if phone is not None:
+            clinic.phone = phone
+        if email is not None:
+            clinic.email = email
+        if header_text is not None:
+            clinic.header_text = header_text
+        if footer_text is not None:
+            clinic.footer_text = footer_text
+
+        # Handle logo
+        updated_fields = []
+        if remove_logo and clinic.logo_path:
+            old_path = os.path.join(
+                current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
+            )
+            if os.path.exists(old_path):
+                os.remove(old_path)
+            clinic.logo_path = None
+            updated_fields.append("logo_removed")
+
+        if logo_file and logo_file.filename:
+            allowed_extensions = {".jpg", ".jpeg", ".png", ".svg", ".webp"}
+            ext = os.path.splitext(secure_filename(logo_file.filename))[1].lower()
+            if ext not in allowed_extensions:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": f"Invalid file type. Allowed: {', '.join(allowed_extensions)}",
+                    }
+                ), 400
+
+            upload_folder = os.path.join(
+                current_app.config.get("PROJECT_ROOT", ""), "clinic_logos"
+            )
+            os.makedirs(upload_folder, exist_ok=True)
+
+            # Remove old logo if exists
+            if clinic.logo_path:
+                old_path = os.path.join(
+                    current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
+                )
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+
+            filename = f"clinic_{clinic.id}_logo{ext}"
+            filepath = os.path.join(upload_folder, filename)
+            logo_file.save(filepath)
+            clinic.logo_path = os.path.join("clinic_logos", filename)
+            updated_fields.append("logo")
+
+        data = {k: v for k, v in request.form.items() if v}
+        if updated_fields:
+            data["updated_files"] = updated_fields
+    else:
+        # Handle JSON
+        data = request.get_json() or {}
+
+        if "name" in data:
+            clinic.name = data["name"]
+        if "address" in data:
+            clinic.address = data["address"]
+        if "phone" in data:
+            clinic.phone = data["phone"]
+        if "email" in data:
+            clinic.email = data["email"]
+        if "header_text" in data:
+            clinic.header_text = data["header_text"]
+        if "footer_text" in data:
+            clinic.footer_text = data["footer_text"]
+
+    try:
+        db.session.commit()
+
+        log_audit(
+            "clinic",
+            "update",
+            user_id=current.id,
+            entity_id=str(clinic.id),
+            details={"updated_fields": list(data.keys())},
+        )
+
+        return jsonify(
+            {
+                "success": True,
+                "message": "Clinic updated successfully",
+                "data": {
+                    "id": clinic.id,
+                    "name": clinic.name,
+                    "address": clinic.address,
+                    "phone": clinic.phone,
+                    "email": clinic.email,
+                    "license_key": clinic.license_key,
+                    "dicom_ae_title": clinic.dicom_ae_title,
+                    "is_active": clinic.is_active,
+                    "logo_path": clinic.logo_path,
+                    "header_text": clinic.header_text,
+                    "footer_text": clinic.footer_text,
+                },
+            }
+        ), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(
+            {"success": False, "error": f"Failed to update clinic: {str(e)}"}
+        ), 500

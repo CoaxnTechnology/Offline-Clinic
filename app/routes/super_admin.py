@@ -40,7 +40,7 @@ def _require_super_admin(admin: Optional[Admin]):
 @jwt_required()
 def list_clinics():
     """
-    Minimal clinics list for super admin.
+    List clinics with doctors for super admin.
     """
     current = _current_admin()
     err = _require_super_admin(current)
@@ -50,6 +50,19 @@ def list_clinics():
     clinics = Clinic.query.all()
     data = []
     for c in clinics:
+        doctors = Admin.query.filter_by(clinic_id=c.id, role="doctor").all()
+        doctors_list = [
+            {
+                "id": d.id,
+                "username": d.username,
+                "first_name": d.first_name,
+                "last_name": d.last_name,
+                "email": d.email,
+                "phone": d.phone,
+                "is_active": d.is_active,
+            }
+            for d in doctors
+        ]
         data.append(
             {
                 "id": c.id,
@@ -58,11 +71,69 @@ def list_clinics():
                 "phone": c.phone,
                 "email": c.email,
                 "license_key": c.license_key,
+                "dicom_ae_title": c.dicom_ae_title,
                 "is_active": c.is_active,
+                "doctors": doctors_list,
+                "doctor_count": len(doctors_list),
             }
         )
 
     return jsonify({"success": True, "data": data}), 200
+
+
+@super_admin_bp.route("/clinics/<int:clinic_id>", methods=["GET"])
+@jwt_required()
+def get_clinic(clinic_id):
+    """
+    Get clinic details with doctors.
+    """
+    current = _current_admin()
+    err = _require_super_admin(current)
+    if err is not None:
+        return err
+
+    clinic = Clinic.query.get(clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    doctors = Admin.query.filter_by(clinic_id=clinic.id, role="doctor").all()
+    doctors_list = [
+        {
+            "id": d.id,
+            "username": d.username,
+            "first_name": d.first_name,
+            "last_name": d.last_name,
+            "email": d.email,
+            "phone": d.phone,
+            "is_active": d.is_active,
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+        }
+        for d in doctors
+    ]
+
+    return jsonify(
+        {
+            "success": True,
+            "data": {
+                "id": clinic.id,
+                "name": clinic.name,
+                "address": clinic.address,
+                "phone": clinic.phone,
+                "email": clinic.email,
+                "license_key": clinic.license_key,
+                "dicom_ae_title": clinic.dicom_ae_title,
+                "is_active": clinic.is_active,
+                "logo_path": clinic.logo_path,
+                "header_text": clinic.header_text,
+                "footer_text": clinic.footer_text,
+                "doctors": doctors_list,
+                "doctor_count": len(doctors_list),
+                "created_at": clinic.created_at.isoformat()
+                if clinic.created_at
+                else None,
+            },
+        }
+    ), 200
 
 
 @super_admin_bp.route("/clinics", methods=["POST"])
