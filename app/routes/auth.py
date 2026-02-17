@@ -277,6 +277,7 @@ def reset_password():
     admin.set_password(new_password)
     admin.reset_token = None
     admin.reset_token_expiry = None
+    admin.is_active = True
     db.session.commit()
 
     return jsonify(
