@@ -11,6 +11,7 @@ from app.utils.decorators import (
 from app.utils.audit import log_audit
 from app.services.email_service import send_welcome_email
 from app.config import Config
+import os
 import secrets
 from datetime import datetime, timedelta
 
@@ -310,6 +311,294 @@ def delete_user(admin_id):
 clinic_bp = Blueprint("clinic", __name__, url_prefix="/api/clinic")
 
 
+# Alias route for frontend compatibility - /api/clinics/<id>
+@clinic_bp.route("/<int:clinic_id>", methods=["GET"])
+@jwt_required()
+def get_clinic_by_id(clinic_id):
+    """
+    Get clinic details by ID.
+    Access: doctor (only their own clinic) or super admin.
+    """
+    current = _current_admin()
+
+    # Check access - doctor can only view their own clinic
+    if not current.is_super_admin:
+        if current.clinic_id != clinic_id:
+            return jsonify({"success": False, "error": "Not authorized"}), 403
+
+    clinic = Clinic.query.get(clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    doctors = Admin.query.filter_by(clinic_id=clinic.id, role="doctor").all()
+
+    doctor_info = None
+    if doctors:
+        d = doctors[0]
+        doctor_info = {
+            "id": d.id,
+            "username": d.username,
+            "first_name": d.first_name,
+            "last_name": d.last_name,
+            "email": d.email,
+            "phone": d.phone,
+            "is_active": d.is_active,
+        }
+
+    logo_url = None
+    if clinic.logo_path:
+        logo_url = f"/api/clinics/{clinic.id}/logo"
+
+    return jsonify(
+        {
+            "success": True,
+            "data": {
+                "id": clinic.id,
+                "name": clinic.name,
+                "address": clinic.address,
+                "phone": clinic.phone,
+                "email": clinic.email,
+                "license_key": clinic.license_key,
+                "dicom_ae_title": clinic.dicom_ae_title,
+                "is_active": clinic.is_active,
+                "logo_path": clinic.logo_path,
+                "logo_url": logo_url,
+                "header_text": clinic.header_text,
+                "footer_text": clinic.footer_text,
+                "doctor": doctor_info,
+            },
+        }
+    ), 200
+
+
+@clinic_bp.route("/<int:clinic_id>/logo", methods=["GET"])
+@jwt_required()
+def get_clinic_logo_by_id(clinic_id):
+    """Get clinic logo by clinic ID."""
+    current = _current_admin()
+
+    # Check access
+    if not current.is_super_admin:
+        if current.clinic_id != clinic_id:
+            return jsonify({"success": False, "error": "Not authorized"}), 403
+
+    clinic = Clinic.query.get(clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    if not clinic.logo_path:
+        return jsonify({"success": False, "error": "No logo set for this clinic"}), 404
+
+    from flask import send_from_directory
+    from app.config import Config
+
+    logo_full_path = os.path.join(Config.PROJECT_ROOT, clinic.logo_path)
+    logo_dir = os.path.dirname(logo_full_path)
+    logo_filename = os.path.basename(logo_full_path)
+
+    if not os.path.exists(logo_full_path):
+        return jsonify(
+            {"success": False, "error": "Logo file not found on server"}
+        ), 404
+
+    return send_from_directory(logo_dir, logo_filename)
+
+
+# PUT endpoint for /api/clinics/<id> - for frontend compatibility
+@clinic_bp.route("/<int:clinic_id>", methods=["PUT"])
+@jwt_required()
+@require_role("doctor")
+def update_clinic_by_id(clinic_id):
+    """Update clinic by ID. Access: doctor of that clinic."""
+    from werkzeug.utils import secure_filename
+
+    current = _current_admin()
+
+    # Check access - doctor can only update their own clinic
+    if current.clinic_id != clinic_id:
+        return jsonify(
+            {"success": False, "error": "Not authorized to update this clinic"}
+        ), 403
+
+    clinic = Clinic.query.get(clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    # Check if multipart form data (logo upload)
+    if request.content_type and "multipart/form-data" in request.content_type:
+        name = request.form.get("name")
+        address = request.form.get("address")
+        phone = request.form.get("phone")
+        email = request.form.get("email")
+        header_text = request.form.get("header_text")
+        footer_text = request.form.get("footer_text")
+        remove_logo = request.form.get("remove_logo", "").lower() == "true"
+        logo_file = request.files.get("logo")
+
+        if name:
+            clinic.name = name
+        if address is not None:
+            clinic.address = address
+        if phone is not None:
+            clinic.phone = phone
+        if email is not None:
+            clinic.email = email
+        if header_text is not None:
+            clinic.header_text = header_text
+        if footer_text is not None:
+            clinic.footer_text = footer_text
+
+        # Handle logo
+        if remove_logo and clinic.logo_path:
+            old_path = os.path.join(
+                current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
+            )
+            if os.path.exists(old_path):
+                os.remove(old_path)
+            clinic.logo_path = None
+
+        if logo_file and logo_file.filename:
+            allowed_extensions = {".jpg", ".jpeg", ".png", ".svg", ".webp"}
+            ext = os.path.splitext(secure_filename(logo_file.filename))[1].lower()
+            if ext not in allowed_extensions:
+                return jsonify(
+                    {
+                        "success": False,
+                        "error": f"Invalid file type. Allowed: {', '.join(allowed_extensions)}",
+                    }
+                ), 400
+
+            upload_folder = os.path.join(
+                current_app.config.get("PROJECT_ROOT", ""), "clinic_logos"
+            )
+            os.makedirs(upload_folder, exist_ok=True)
+
+            if clinic.logo_path:
+                old_path = os.path.join(
+                    current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
+                )
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+
+            filename = f"clinic_{clinic.id}_logo{ext}"
+            filepath = os.path.join(upload_folder, filename)
+            logo_file.save(filepath)
+            clinic.logo_path = os.path.join("clinic_logos", filename)
+    else:
+        # Handle JSON
+        data = request.get_json() or {}
+
+        if "name" in data:
+            clinic.name = data["name"]
+        if "address" in data:
+            clinic.address = data["address"]
+        if "phone" in data:
+            clinic.phone = data["phone"]
+        if "email" in data:
+            clinic.email = data["email"]
+        if "header_text" in data:
+            clinic.header_text = data["header_text"]
+        if "footer_text" in data:
+            clinic.footer_text = data["footer_text"]
+
+    try:
+        db.session.commit()
+
+        log_audit(
+            "clinic", "update", user_id=current.id, entity_id=str(clinic.id), details={}
+        )
+
+        return jsonify(
+            {
+                "success": True,
+                "message": "Clinic updated successfully",
+                "data": {
+                    "id": clinic.id,
+                    "name": clinic.name,
+                    "address": clinic.address,
+                    "phone": clinic.phone,
+                    "email": clinic.email,
+                    "license_key": clinic.license_key,
+                    "dicom_ae_title": clinic.dicom_ae_title,
+                    "is_active": clinic.is_active,
+                    "logo_path": clinic.logo_path,
+                    "logo_url": f"/api/clinics/{clinic.id}/logo"
+                    if clinic.logo_path
+                    else None,
+                    "header_text": clinic.header_text,
+                    "footer_text": clinic.footer_text,
+                },
+            }
+        ), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(
+            {"success": False, "error": f"Failed to update clinic: {str(e)}"}
+        ), 500
+
+
+@clinic_bp.route("", methods=["GET"])
+@jwt_required()
+def get_current_clinic():
+    """
+    Get current user's clinic details with doctor info.
+    Access: authenticated user.
+    """
+    current = _current_admin()
+    if not current.clinic_id:
+        return jsonify(
+            {"success": False, "error": "User is not associated with a clinic"}
+        ), 400
+
+    clinic = Clinic.query.get(current.clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    # Get doctors for this clinic
+    doctors = Admin.query.filter_by(clinic_id=clinic.id, role="doctor").all()
+
+    # Flatten first doctor info
+    doctor_info = None
+    if doctors:
+        d = doctors[0]
+        doctor_info = {
+            "id": d.id,
+            "username": d.username,
+            "first_name": d.first_name,
+            "last_name": d.last_name,
+            "email": d.email,
+            "phone": d.phone,
+            "is_active": d.is_active,
+        }
+
+    # Build logo URL
+    logo_url = None
+    if clinic.logo_path:
+        logo_url = f"/api/clinic/logo"
+
+    return jsonify(
+        {
+            "success": True,
+            "data": {
+                "id": clinic.id,
+                "name": clinic.name,
+                "address": clinic.address,
+                "phone": clinic.phone,
+                "email": clinic.email,
+                "license_key": clinic.license_key,
+                "dicom_ae_title": clinic.dicom_ae_title,
+                "is_active": clinic.is_active,
+                "logo_path": clinic.logo_path,
+                "logo_url": logo_url,
+                "header_text": clinic.header_text,
+                "footer_text": clinic.footer_text,
+                "doctor": doctor_info,
+            },
+        }
+    ), 200
+
+
 @clinic_bp.route("", methods=["PUT"])
 @jwt_required()
 @require_role("doctor")
@@ -453,6 +742,7 @@ def update_current_clinic():
                     "dicom_ae_title": clinic.dicom_ae_title,
                     "is_active": clinic.is_active,
                     "logo_path": clinic.logo_path,
+                    "logo_url": f"/api/clinic/logo" if clinic.logo_path else None,
                     "header_text": clinic.header_text,
                     "footer_text": clinic.footer_text,
                 },
@@ -464,3 +754,38 @@ def update_current_clinic():
         return jsonify(
             {"success": False, "error": f"Failed to update clinic: {str(e)}"}
         ), 500
+
+
+@clinic_bp.route("/logo", methods=["GET"])
+@jwt_required()
+def get_clinic_logo():
+    """
+    Get current clinic's logo.
+    Access: authenticated user.
+    """
+    current = _current_admin()
+    if not current.clinic_id:
+        return jsonify(
+            {"success": False, "error": "User is not associated with a clinic"}
+        ), 400
+
+    clinic = Clinic.query.get(current.clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    if not clinic.logo_path:
+        return jsonify({"success": False, "error": "No logo set for this clinic"}), 404
+
+    from flask import send_from_directory
+    from app.config import Config
+
+    logo_full_path = os.path.join(Config.PROJECT_ROOT, clinic.logo_path)
+    logo_dir = os.path.dirname(logo_full_path)
+    logo_filename = os.path.basename(logo_full_path)
+
+    if not os.path.exists(logo_full_path):
+        return jsonify(
+            {"success": False, "error": "Logo file not found on server"}
+        ), 404
+
+    return send_from_directory(logo_dir, logo_filename)

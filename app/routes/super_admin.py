@@ -53,10 +53,23 @@ def list_clinics():
         doctors = Admin.query.filter_by(clinic_id=c.id, role="doctor").all()
 
         # Flatten first doctor info
-        doctor_name = None
+        doctor_info = None
         if doctors:
             d = doctors[0]
-            doctor_name = f"{d.first_name} {d.last_name}".strip()
+            doctor_info = {
+                "id": d.id,
+                "username": d.username,
+                "first_name": d.first_name,
+                "last_name": d.last_name,
+                "email": d.email,
+                "phone": d.phone,
+                "is_active": d.is_active,
+            }
+
+        # Build logo URL
+        logo_url = None
+        if c.logo_path:
+            logo_url = f"/api/super-admin/clinics/{c.id}/logo"
 
         data.append(
             {
@@ -69,7 +82,8 @@ def list_clinics():
                 "ae_title": c.dicom_ae_title,
                 "is_active": c.is_active,
                 "logo_path": c.logo_path,
-                "doctor_name": doctor_name,
+                "logo_url": logo_url,
+                "doctor": doctor_info,
             }
         )
 
@@ -95,20 +109,24 @@ def get_clinic(clinic_id):
 
     doctors = Admin.query.filter_by(clinic_id=clinic.id, role="doctor").all()
 
-    doctor_name = None
     doctor_info = None
     if doctors:
         d = doctors[0]
-        doctor_name = f"{d.first_name} {d.last_name}".strip()
         doctor_info = {
             "id": d.id,
             "username": d.username,
-            "doctor_name": doctor_name,
+            "first_name": d.first_name,
+            "last_name": d.last_name,
             "email": d.email,
             "phone": d.phone,
             "is_active": d.is_active,
             "created_at": d.created_at.isoformat() if d.created_at else None,
         }
+
+    # Build logo URL
+    logo_url = None
+    if clinic.logo_path:
+        logo_url = f"/api/super-admin/clinics/{clinic.id}/logo"
 
     return jsonify(
         {
@@ -123,9 +141,9 @@ def get_clinic(clinic_id):
                 "ae_title": clinic.dicom_ae_title,
                 "is_active": clinic.is_active,
                 "logo_path": clinic.logo_path,
+                "logo_url": logo_url,
                 "header_text": clinic.header_text,
                 "footer_text": clinic.footer_text,
-                "doctor_name": doctor_name,
                 "doctor": doctor_info,
                 "created_at": clinic.created_at.isoformat()
                 if clinic.created_at
@@ -138,11 +156,19 @@ def get_clinic(clinic_id):
 @super_admin_bp.route("/clinics/<int:clinic_id>", methods=["PUT"])
 @jwt_required()
 def update_clinic(clinic_id):
-    """Update clinic details. Access: super admin only."""
+    """Update clinic details. Access: super admin or doctor of the clinic."""
     current = _current_admin()
-    err = _require_super_admin(current)
-    if err is not None:
-        return err
+
+    # Super admin can update any clinic, doctor can only update their own clinic
+    if not current.is_super_admin:
+        if current.clinic_id != clinic_id:
+            return jsonify(
+                {"success": False, "error": "Not authorized to update this clinic"}
+            ), 403
+        # Doctors can only update certain fields
+        is_doctor = True
+    else:
+        is_doctor = False
 
     clinic = Clinic.query.get(clinic_id)
     if not clinic:
@@ -150,42 +176,101 @@ def update_clinic(clinic_id):
 
     data = request.get_json() or {}
 
-    if "hospital_name" in data:
-        clinic.name = data["hospital_name"]
-    if "license_name" in data:
-        existing = Clinic.query.filter(Clinic.license_key == data["license_name"], Clinic.id != clinic_id).first()
-        if existing:
-            return jsonify({"success": False, "error": "License name already exists"}), 400
-        clinic.license_key = data["license_name"]
-    if "clinic_address" in data:
-        clinic.address = data["clinic_address"]
-    if "contact_number" in data:
-        clinic.phone = data["contact_number"]
-    if "email" in data:
-        clinic.email = data["email"]
-    if "is_active" in data:
-        clinic.is_active = bool(data["is_active"])
+    # Super admin can update all fields, doctors can only update limited fields
+    if is_doctor:
+        # Doctor can update: name, address, phone, email, header_text, footer_text
+        if "hospital_name" in data:
+            clinic.name = data["hospital_name"]
+        if "clinic_address" in data:
+            clinic.address = data["clinic_address"]
+        if "contact_number" in data:
+            clinic.phone = data["contact_number"]
+        if "email" in data:
+            clinic.email = data["email"]
+    else:
+        # Super admin can update all fields
+        if "hospital_name" in data:
+            clinic.name = data["hospital_name"]
+        if "license_name" in data:
+            existing = Clinic.query.filter(
+                Clinic.license_key == data["license_name"], Clinic.id != clinic_id
+            ).first()
+            if existing:
+                return jsonify(
+                    {"success": False, "error": "License name already exists"}
+                ), 400
+            clinic.license_key = data["license_name"]
+        if "clinic_address" in data:
+            clinic.address = data["clinic_address"]
+        if "contact_number" in data:
+            clinic.phone = data["contact_number"]
+        if "email" in data:
+            clinic.email = data["email"]
+        if "is_active" in data:
+            clinic.is_active = bool(data["is_active"])
+
+    # Common fields for both
+    if "header_text" in data:
+        clinic.header_text = data["header_text"]
+    if "footer_text" in data:
+        clinic.footer_text = data["footer_text"]
 
     try:
         db.session.commit()
-        log_audit("clinic", "update", user_id=current.id, entity_id=str(clinic_id), details=data)
-        return jsonify({
-            "success": True,
-            "data": {
-                "id": clinic.id,
-                "hospital_name": clinic.name,
-                "license_name": clinic.license_key,
-                "clinic_address": clinic.address,
-                "contact_number": clinic.phone,
-                "email": clinic.email,
-                "ae_title": clinic.dicom_ae_title,
-                "is_active": clinic.is_active,
-            },
-            "message": "Clinic updated successfully",
-        }), 200
+        log_audit(
+            "clinic",
+            "update",
+            user_id=current.id,
+            entity_id=str(clinic_id),
+            details=data,
+        )
+
+        # Get doctor info
+        doctors = Admin.query.filter_by(clinic_id=clinic.id, role="doctor").all()
+        doctor_info = None
+        if doctors:
+            d = doctors[0]
+            doctor_info = {
+                "id": d.id,
+                "username": d.username,
+                "first_name": d.first_name,
+                "last_name": d.last_name,
+                "email": d.email,
+                "phone": d.phone,
+                "is_active": d.is_active,
+            }
+
+        # Build logo URL
+        logo_url = None
+        if clinic.logo_path:
+            logo_url = f"/api/super-admin/clinics/{clinic.id}/logo"
+
+        return jsonify(
+            {
+                "success": True,
+                "data": {
+                    "id": clinic.id,
+                    "hospital_name": clinic.name,
+                    "license_name": clinic.license_key,
+                    "clinic_address": clinic.address,
+                    "contact_number": clinic.phone,
+                    "email": clinic.email,
+                    "ae_title": clinic.dicom_ae_title,
+                    "is_active": clinic.is_active,
+                    "logo_path": clinic.logo_path,
+                    "logo_url": logo_url,
+                    "header_text": clinic.header_text,
+                    "footer_text": clinic.footer_text,
+                    "doctor": doctor_info,
+                },
+                "message": "Clinic updated successfully",
+            }
+        ), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({"success": False, "error": f"Failed to update clinic: {str(e)}"}), 500
+        return jsonify(
+            {"success": False, "error": f"Failed to update clinic: {str(e)}"}
+        ), 500
 
 
 @super_admin_bp.route("/clinics/<int:clinic_id>", methods=["DELETE"])
@@ -202,7 +287,16 @@ def delete_clinic(clinic_id):
         return jsonify({"success": False, "error": "Clinic not found"}), 404
 
     try:
-        from app.models import Patient, Appointment, Visit, DicomImage, DicomMeasurement, Prescription, Report, AuditLog
+        from app.models import (
+            Patient,
+            Appointment,
+            Visit,
+            DicomImage,
+            DicomMeasurement,
+            Prescription,
+            Report,
+            AuditLog,
+        )
         from sqlalchemy import text
 
         clinic_name = clinic.name
@@ -220,14 +314,24 @@ def delete_clinic(clinic_id):
         db.session.delete(clinic)
         db.session.commit()
 
-        log_audit("clinic", "delete", user_id=current.id, entity_id=str(clinic_id), details={"clinic_name": clinic_name})
-        return jsonify({
-            "success": True,
-            "message": f"Clinic '{clinic_name}' and all its data deleted successfully",
-        }), 200
+        log_audit(
+            "clinic",
+            "delete",
+            user_id=current.id,
+            entity_id=str(clinic_id),
+            details={"clinic_name": clinic_name},
+        )
+        return jsonify(
+            {
+                "success": True,
+                "message": f"Clinic '{clinic_name}' and all its data deleted successfully",
+            }
+        ), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({"success": False, "error": f"Failed to delete clinic: {str(e)}"}), 500
+        return jsonify(
+            {"success": False, "error": f"Failed to delete clinic: {str(e)}"}
+        ), 500
 
 
 @super_admin_bp.route("/clinics", methods=["POST"])
