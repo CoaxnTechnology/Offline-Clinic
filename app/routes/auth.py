@@ -86,6 +86,8 @@ def login():
                 "role": admin.role,
                 "first_name": admin.first_name,
                 "last_name": admin.last_name,
+                "clinic_id": admin.clinic_id,
+                "is_super_admin": admin.is_super_admin,
             },
             "access_token": access_token,
             "refresh_token": refresh_token,  # remove if you don't want refresh tokens
