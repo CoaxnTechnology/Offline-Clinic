@@ -314,16 +314,23 @@ clinic_bp = Blueprint("clinic", __name__, url_prefix="/api/clinic")
 @jwt_required()
 def get_current_clinic():
     """
-    Get current user's clinic details with doctor info.
-    Access: authenticated user.
+    Get clinic details with doctor info.
+    Doctor/receptionist: returns their own clinic.
+    Super admin: pass ?clinic_id=5 to get any clinic.
     """
     current = _current_admin()
-    if not current.clinic_id:
+    clinic_id = current.clinic_id
+
+    # Super admin can view any clinic via query param
+    if current.is_super_admin:
+        clinic_id = request.args.get("clinic_id", type=int) or clinic_id
+
+    if not clinic_id:
         return jsonify(
-            {"success": False, "error": "User is not associated with a clinic"}
+            {"success": False, "error": "clinic_id is required"}
         ), 400
 
-    clinic = Clinic.query.get(current.clinic_id)
+    clinic = Clinic.query.get(clinic_id)
     if not clinic:
         return jsonify({"success": False, "error": "Clinic not found"}), 404
 
