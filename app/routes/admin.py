@@ -3,7 +3,11 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from app.extensions import db
 from app.models import Admin, Clinic
-from app.utils.decorators import get_current_clinic_id, verify_clinic_access
+from app.utils.decorators import (
+    get_current_clinic_id,
+    verify_clinic_access,
+    require_role,
+)
 from app.utils.audit import log_audit
 from app.services.email_service import send_welcome_email
 from app.config import Config
@@ -115,7 +119,9 @@ def create_user():
 
     # Use FRONTEND_BASE_URL for set-password/reset-password links so it can point to the web app,
     # independent of PUBLIC_BASE_URL (used for PDFs and other backend URLs).
-    base_url = Config.FRONTEND_BASE_URL or Config.PUBLIC_BASE_URL or "http://localhost:8080"
+    base_url = (
+        Config.FRONTEND_BASE_URL or Config.PUBLIC_BASE_URL or "http://localhost:8080"
+    )
     reset_link = f"{base_url.rstrip('/')}/reset-password/{token}"
 
     send_welcome_email(
@@ -148,7 +154,7 @@ def create_user():
                     "clinic_id": clinic_id,
                     "role": role,
                     "is_active": user.is_active,
-                }
+                },
             }
         ),
         201,
@@ -290,11 +296,220 @@ def delete_user(admin_id):
             details=user_info,
         )
 
-        return jsonify({
-            "success": True,
-            "message": f"{user_info['role'].capitalize()} '{user_info['username']}' deleted successfully",
-        }), 200
+        return jsonify(
+            {
+                "success": True,
+                "message": f"{user_info['role'].capitalize()} '{user_info['username']}' deleted successfully",
+            }
+        ), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"success": False, "error": f"Failed to delete: {str(e)}"}), 500
 
+
+clinic_bp = Blueprint("clinic", __name__, url_prefix="/api/clinic")
+
+
+@clinic_bp.route("/logo", methods=["POST"])
+@jwt_required()
+@require_role("doctor")
+def upload_clinic_logo():
+    """
+    Upload logo for the current user's clinic.
+    Access: doctor only.
+
+    Multipart form data:
+        logo: Image file (jpg, png, svg, webp)
+    """
+    import os
+    from werkzeug.utils import secure_filename
+    from flask import current_app
+
+    current = _current_admin()
+    if not current.clinic_id:
+        return jsonify(
+            {"success": False, "error": "User is not associated with a clinic"}
+        ), 400
+
+    clinic = Clinic.query.get(current.clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    if "logo" not in request.files:
+        return jsonify({"success": False, "error": "No logo file provided"}), 400
+
+    file = request.files["logo"]
+    if file.filename == "":
+        return jsonify({"success": False, "error": "No file selected"}), 400
+
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".svg", ".webp"}
+    ext = os.path.splitext(secure_filename(file.filename))[1].lower()
+    if ext not in allowed_extensions:
+        return jsonify(
+            {
+                "success": False,
+                "error": f"Invalid file type. Allowed: {', '.join(allowed_extensions)}",
+            }
+        ), 400
+
+    upload_folder = os.path.join(
+        current_app.config.get("PROJECT_ROOT", ""), "clinic_logos"
+    )
+    os.makedirs(upload_folder, exist_ok=True)
+
+    filename = f"clinic_{clinic.id}_logo{ext}"
+    filepath = os.path.join(upload_folder, filename)
+
+    try:
+        file.save(filepath)
+
+        relative_path = os.path.join("clinic_logos", filename)
+        clinic.logo_path = relative_path
+        db.session.commit()
+
+        log_audit(
+            "clinic",
+            "upload_logo",
+            user_id=current.id,
+            entity_id=str(clinic.id),
+            details={"filename": filename},
+        )
+
+        return jsonify(
+            {
+                "success": True,
+                "message": "Logo uploaded successfully",
+                "data": {
+                    "clinic_id": clinic.id,
+                    "logo_path": relative_path,
+                },
+            }
+        ), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(
+            {"success": False, "error": f"Failed to upload logo: {str(e)}"}
+        ), 500
+
+
+@clinic_bp.route("/logo", methods=["GET"])
+@jwt_required()
+def get_clinic_logo():
+    """
+    Get current clinic's logo.
+    Access: authenticated user.
+    """
+    current = _current_admin()
+    if not current.clinic_id:
+        return jsonify(
+            {"success": False, "error": "User is not associated with a clinic"}
+        ), 400
+
+    clinic = Clinic.query.get(current.clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    if not clinic.logo_path:
+        return jsonify({"success": False, "error": "No logo set for this clinic"}), 404
+
+    from flask import send_from_directory
+    from app.config import Config
+
+    logo_full_path = os.path.join(Config.PROJECT_ROOT, clinic.logo_path)
+    logo_dir = os.path.dirname(logo_full_path)
+    logo_filename = os.path.basename(logo_full_path)
+
+    if not os.path.exists(logo_full_path):
+        return jsonify(
+            {"success": False, "error": "Logo file not found on server"}
+        ), 404
+
+    return send_from_directory(logo_dir, logo_filename)
+
+
+@clinic_bp.route("/logo", methods=["DELETE"])
+@jwt_required()
+@require_role("doctor")
+def delete_clinic_logo():
+    """
+    Delete current clinic's logo.
+    Access: doctor only.
+    """
+    import os
+    from flask import current_app
+
+    current = _current_admin()
+    if not current.clinic_id:
+        return jsonify(
+            {"success": False, "error": "User is not associated with a clinic"}
+        ), 400
+
+    clinic = Clinic.query.get(current.clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    if not clinic.logo_path:
+        return jsonify({"success": False, "error": "No logo set for this clinic"}), 404
+
+    logo_full_path = os.path.join(
+        current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
+    )
+
+    try:
+        if os.path.exists(logo_full_path):
+            os.remove(logo_full_path)
+
+        clinic.logo_path = None
+        db.session.commit()
+
+        log_audit(
+            "clinic",
+            "delete_logo",
+            user_id=current.id,
+            entity_id=str(clinic.id),
+            details={},
+        )
+
+        return jsonify({"success": True, "message": "Logo deleted successfully"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(
+            {"success": False, "error": f"Failed to delete logo: {str(e)}"}
+        ), 500
+
+
+@clinic_bp.route("", methods=["GET"])
+@jwt_required()
+def get_current_clinic():
+    """
+    Get current user's clinic details.
+    Access: authenticated user.
+    """
+    current = _current_admin()
+    if not current.clinic_id:
+        return jsonify(
+            {"success": False, "error": "User is not associated with a clinic"}
+        ), 400
+
+    clinic = Clinic.query.get(current.clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    return jsonify(
+        {
+            "success": True,
+            "data": {
+                "id": clinic.id,
+                "name": clinic.name,
+                "address": clinic.address,
+                "phone": clinic.phone,
+                "email": clinic.email,
+                "license_key": clinic.license_key,
+                "dicom_ae_title": clinic.dicom_ae_title,
+                "is_active": clinic.is_active,
+                "has_logo": bool(clinic.logo_path),
+            },
+        }
+    ), 200

@@ -192,12 +192,30 @@ def list_appointments():
             .first()
         )
         has_dicom = DicomImage.query.filter_by(appointment_id=apt.id).count() > 0
+
+        # Get doctor details from Admin table
+        doctor_details = None
+        if apt.doctor:
+            doctor_admin = Admin.query.filter(
+                Admin.clinic_id == apt.clinic_id,
+                (Admin.first_name + " " + Admin.last_name).ilike(f"%{apt.doctor}%")
+                | Admin.username.ilike(f"%{apt.doctor}%"),
+            ).first()
+            if doctor_admin:
+                doctor_details = {
+                    "id": doctor_admin.id,
+                    "name": f"{doctor_admin.first_name or ''} {doctor_admin.last_name or ''}".strip(),
+                    "username": doctor_admin.username,
+                    "email": doctor_admin.email,
+                }
+
         result.append(
             {
                 "id": apt.id,
                 "patient_id": apt.patient_id,
                 "patient": _patient_to_dict(patient) if patient else None,
                 "doctor": apt.doctor,
+                "doctor_details": doctor_details,
                 "date": apt.date.isoformat() if apt.date else None,
                 "time": apt.time,
                 "status": apt.status,
@@ -294,6 +312,24 @@ def list_with_doctor_appointments_for_consultant():
             .order_by(Prescription.created_at.desc())
             .first()
         )
+
+        # Get doctor details from Admin table
+        doctor_details = None
+        if apt.doctor:
+            doctor_admin = Admin.query.filter(
+                Admin.clinic_id == apt.clinic_id,
+                (Admin.first_name + " " + Admin.last_name).ilike(f"%{apt.doctor}%")
+                | Admin.username.ilike(f"%{apt.doctor}%"),
+            ).first()
+            if doctor_admin:
+                doctor_details = {
+                    "id": doctor_admin.id,
+                    "name": f"{doctor_admin.first_name or ''} {doctor_admin.last_name or ''}".strip(),
+                    "username": doctor_admin.username,
+                    "email": doctor_admin.email,
+                }
+
+        rx_dict = latest_rx.to_dict() if latest_rx else None
         rx_dict = latest_rx.to_dict() if latest_rx else None
 
         result.append(
@@ -302,6 +338,7 @@ def list_with_doctor_appointments_for_consultant():
                 "patient_id": apt.patient_id,
                 "patient": _patient_to_dict(patient) if patient else None,
                 "doctor": apt.doctor,
+                "doctor_details": doctor_details,
                 "date": apt.date.isoformat() if apt.date else None,
                 "time": apt.time,
                 "status": apt.status,

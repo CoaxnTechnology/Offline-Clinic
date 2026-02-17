@@ -82,28 +82,50 @@ def create_app(config_name=None):
     @app.errorhandler(Exception)
     def handle_exception(e):
         from sqlalchemy.exc import IntegrityError
+
         db.session.rollback()
         if isinstance(e, IntegrityError):
-            error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+            error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
             if "unique" in error_msg.lower() or "duplicate" in error_msg.lower():
                 # Extract field name from error if possible
                 if "username" in error_msg.lower():
-                    return jsonify({"success": False, "error": "Username already exists"}), 400
+                    return jsonify(
+                        {"success": False, "error": "Username already exists"}
+                    ), 400
                 elif "email" in error_msg.lower():
-                    return jsonify({"success": False, "error": "Email already exists"}), 400
+                    return jsonify(
+                        {"success": False, "error": "Email already exists"}
+                    ), 400
                 elif "phone" in error_msg.lower():
-                    return jsonify({"success": False, "error": "Phone number already exists"}), 400
+                    return jsonify(
+                        {"success": False, "error": "Phone number already exists"}
+                    ), 400
                 elif "license_key" in error_msg.lower():
-                    return jsonify({"success": False, "error": "License key already exists"}), 400
+                    return jsonify(
+                        {"success": False, "error": "License key already exists"}
+                    ), 400
                 elif "accession_number" in error_msg.lower():
-                    return jsonify({"success": False, "error": "Accession number already exists"}), 400
+                    return jsonify(
+                        {"success": False, "error": "Accession number already exists"}
+                    ), 400
                 else:
-                    return jsonify({"success": False, "error": "A record with this value already exists"}), 400
+                    return jsonify(
+                        {
+                            "success": False,
+                            "error": "A record with this value already exists",
+                        }
+                    ), 400
             elif "not-null" in error_msg.lower() or "not null" in error_msg.lower():
-                return jsonify({"success": False, "error": "A required field is missing"}), 400
+                return jsonify(
+                    {"success": False, "error": "A required field is missing"}
+                ), 400
             elif "foreign key" in error_msg.lower():
-                return jsonify({"success": False, "error": "Referenced record does not exist"}), 400
-            return jsonify({"success": False, "error": "Data conflict. Please check your input."}), 400
+                return jsonify(
+                    {"success": False, "error": "Referenced record does not exist"}
+                ), 400
+            return jsonify(
+                {"success": False, "error": "Data conflict. Please check your input."}
+            ), 400
         logger.error(f"Unhandled exception: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"An error occurred: {str(e)}"}), 500
 
@@ -119,8 +141,10 @@ def create_app(config_name=None):
         # Dedicated DICOM log file (always enabled for debugging)
         dicom_logger = logging.getLogger("dicom")
         # Remove existing handlers to avoid duplicates on reload
-        dicom_logger.handlers = [h for h in dicom_logger.handlers if not isinstance(h, RotatingFileHandler)]
-        
+        dicom_logger.handlers = [
+            h for h in dicom_logger.handlers if not isinstance(h, RotatingFileHandler)
+        ]
+
         dicom_log_path = os.path.join(logs_dir, "dicom.log")
         dicom_file_handler = RotatingFileHandler(
             dicom_log_path, maxBytes=10240000, backupCount=10
@@ -133,7 +157,9 @@ def create_app(config_name=None):
         dicom_file_handler.setLevel(logging.INFO)
         dicom_logger.addHandler(dicom_file_handler)
         dicom_logger.setLevel(logging.INFO)
-        dicom_logger.propagate = False  # Don't propagate to root logger to avoid duplicates
+        dicom_logger.propagate = (
+            False  # Don't propagate to root logger to avoid duplicates
+        )
         dicom_logger.info("DICOM logging initialized - log file: %s", dicom_log_path)
     except Exception as e:
         # Logging setup failure shouldn't crash the app
@@ -155,7 +181,9 @@ def create_app(config_name=None):
             app.logger.setLevel(logging.INFO)
             app.logger.info("Application startup")
         except Exception as e:
-            logger.warning(f"Failed to setup application file logging: {e}", exc_info=True)
+            logger.warning(
+                f"Failed to setup application file logging: {e}", exc_info=True
+            )
 
     # Production: Set max content length for file uploads
     app.config["MAX_CONTENT_LENGTH"] = app.config.get(
@@ -222,6 +250,7 @@ def create_app(config_name=None):
         # Auto-add missing columns (safe: IF NOT EXISTS)
         try:
             from sqlalchemy import text
+
             stmts = [
                 "ALTER TABLE prescriptions ADD COLUMN IF NOT EXISTS clinic_id INTEGER REFERENCES clinics(id)",
                 "ALTER TABLE dicom_measurements ADD COLUMN IF NOT EXISTS clinic_id INTEGER REFERENCES clinics(id)",
@@ -249,6 +278,7 @@ def create_app(config_name=None):
         def serve_report(filename):
             from flask import send_from_directory
             from app.config import Config
+
             reports_dir = os.path.join(Config.PROJECT_ROOT, Config.PDF_REPORTS_PATH)
             return send_from_directory(reports_dir, filename)
 
@@ -266,6 +296,7 @@ def create_app(config_name=None):
             template_bp,
         )
         from .routes.super_admin import super_admin_bp
+        from .routes.admin import clinic_bp
 
         app.register_blueprint(health_bp)  # Register health check first
         app.register_blueprint(auth_bp)
@@ -275,6 +306,7 @@ def create_app(config_name=None):
         app.register_blueprint(
             admin_bp, url_prefix="/api/receptionists", name="receptionist"
         )  # Alias
+        app.register_blueprint(clinic_bp)  # /api/clinic
         app.register_blueprint(dicom_bp)
         app.register_blueprint(reporting_bp)
         app.register_blueprint(prescription_bp)
@@ -349,6 +381,7 @@ def create_app(config_name=None):
     # so they can run inside app.app_context(). Safe because create_app runs once per process.
     try:
         from app.services import dicom_service
+
         dicom_service._flask_app = app
     except Exception:
         pass

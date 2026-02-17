@@ -101,7 +101,13 @@ def create_clinic_with_doctor():
     email = (data.get("email") or "").strip()
     clinic_address = (data.get("clinic_address") or "").strip() or None
 
-    if not hospital_name or not license_name or not doctor_name or not contact_number or not email:
+    if (
+        not hospital_name
+        or not license_name
+        or not doctor_name
+        or not contact_number
+        or not email
+    ):
         return (
             jsonify(
                 {
@@ -239,24 +245,23 @@ def create_clinic_with_doctor():
         )
     except Exception as e:
         db.session.rollback()
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "error": f"Failed to create clinic: {str(e)}",
-                }
-            ),
-            500,
-        )
+        return jsonify({"success": False, "error": f"Cleanup failed: {str(e)}"}), 500
 
 
-@super_admin_bp.route("/clinics/<int:clinic_id>", methods=["PUT"])
+@super_admin_bp.route("/clinics/<int:clinic_id>/logo", methods=["POST"])
 @jwt_required()
-def update_clinic(clinic_id):
+def upload_clinic_logo(clinic_id):
     """
-    Update clinic details.
+    Upload clinic logo image.
     Access: super admin only.
+
+    Multipart form data:
+        logo: Image file (jpg, png, svg, webp)
     """
+    import os
+    from werkzeug.utils import secure_filename
+    from flask import current_app
+
     current = _current_admin()
     err = _require_super_admin(current)
     if err is not None:
@@ -266,173 +271,147 @@ def update_clinic(clinic_id):
     if not clinic:
         return jsonify({"success": False, "error": "Clinic not found"}), 404
 
-    data = request.get_json() or {}
+    if "logo" not in request.files:
+        return jsonify({"success": False, "error": "No logo file provided"}), 400
 
-    if "hospital_name" in data:
-        clinic.name = data["hospital_name"]
-    if "license_name" in data:
-        # Check uniqueness
-        existing = Clinic.query.filter(Clinic.license_key == data["license_name"], Clinic.id != clinic_id).first()
-        if existing:
-            return jsonify({"success": False, "error": "License name already exists"}), 400
-        clinic.license_key = data["license_name"]
-    if "clinic_address" in data:
-        clinic.address = data["clinic_address"]
-    if "contact_number" in data:
-        clinic.phone = data["contact_number"]
-    if "email" in data:
-        clinic.email = data["email"]
-    if "is_active" in data:
-        clinic.is_active = bool(data["is_active"])
+    file = request.files["logo"]
+    if file.filename == "":
+        return jsonify({"success": False, "error": "No file selected"}), 400
+
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".svg", ".webp"}
+    ext = os.path.splitext(secure_filename(file.filename))[1].lower()
+    if ext not in allowed_extensions:
+        return jsonify(
+            {
+                "success": False,
+                "error": f"Invalid file type. Allowed: {', '.join(allowed_extensions)}",
+            }
+        ), 400
+
+    upload_folder = os.path.join(
+        current_app.config.get("PROJECT_ROOT", ""), "clinic_logos"
+    )
+    os.makedirs(upload_folder, exist_ok=True)
+
+    filename = f"clinic_{clinic_id}_logo{ext}"
+    filepath = os.path.join(upload_folder, filename)
 
     try:
+        file.save(filepath)
+
+        relative_path = os.path.join("clinic_logos", filename)
+        clinic.logo_path = relative_path
         db.session.commit()
 
         log_audit(
             "clinic",
-            "update",
+            "upload_logo",
             user_id=current.id,
             entity_id=str(clinic_id),
-            details=data,
+            details={"filename": filename},
         )
-
-        return jsonify({
-            "success": True,
-            "data": {
-                "id": clinic.id,
-                "hospital_name": clinic.name,
-                "license_name": clinic.license_key,
-                "clinic_address": clinic.address,
-                "contact_number": clinic.phone,
-                "email": clinic.email,
-                "ae_title": clinic.dicom_ae_title,
-                "is_active": clinic.is_active,
-            },
-            "message": "Clinic updated successfully",
-        }), 200
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"success": False, "error": f"Failed to update clinic: {str(e)}"}), 500
-
-
-@super_admin_bp.route("/clinics/<int:clinic_id>", methods=["DELETE"])
-@jwt_required()
-def delete_clinic(clinic_id):
-    """
-    Hard-delete a clinic and ALL its data (doctors, patients, appointments, etc.).
-    Access: super admin only.
-    """
-    current = _current_admin()
-    err = _require_super_admin(current)
-    if err is not None:
-        return err
-
-    clinic = Clinic.query.get(clinic_id)
-    if not clinic:
-        return jsonify({"success": False, "error": "Clinic not found"}), 404
-
-    try:
-        from app.models import Patient, Appointment, Visit, DicomImage, DicomMeasurement, Prescription, Report
-
-        clinic_name = clinic.name
-
-        # Delete all clinic data in FK order
-        DicomMeasurement.query.filter_by(clinic_id=clinic_id).delete()
-        DicomImage.query.filter_by(clinic_id=clinic_id).delete()
-        Report.query.filter_by(clinic_id=clinic_id).delete()
-        Prescription.query.filter_by(clinic_id=clinic_id).delete()
-        Visit.query.filter_by(clinic_id=clinic_id).delete()
-        Appointment.query.filter_by(clinic_id=clinic_id).delete()
-        Patient.query.filter_by(clinic_id=clinic_id).delete()
-        Admin.query.filter_by(clinic_id=clinic_id).delete()
-        db.session.delete(clinic)
-        db.session.commit()
-
-        log_audit(
-            "clinic",
-            "delete",
-            user_id=current.id,
-            entity_id=str(clinic_id),
-            details={"clinic_name": clinic_name},
-        )
-
-        return jsonify({
-            "success": True,
-            "message": f"Clinic '{clinic_name}' and all its data deleted successfully",
-        }), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"success": False, "error": f"Failed to delete clinic: {str(e)}"}), 500
-
-
-@super_admin_bp.route("/health", methods=["GET"])
-@jwt_required()
-def super_admin_health():
-    """
-    Simple health check for super admin API.
-    """
-    current = _current_admin()
-    if not current:
-        return jsonify({"success": False, "error": "User not found"}), 404
-    if not current.is_super_admin:
-        return jsonify({"success": False, "error": "Super admin only"}), 403
-
-    return jsonify({"success": True, "message": "Super admin API OK"}), 200
-
-
-@super_admin_bp.route("/cleanup/patients", methods=["DELETE"])
-@jwt_required()
-def cleanup_all_patients():
-    """
-    Delete all patients and their related data.
-    WARNING: This will delete ALL patients, appointments, visits, DICOM images, prescriptions.
-    Only super admin can access this.
-    """
-    from app.models import Patient, Appointment, Visit, DicomImage, Prescription, Report
-
-    current = _current_admin()
-    err = _require_super_admin(current)
-    if err is not None:
-        return err
-
-    try:
-        # Count before deletion
-        patient_count = Patient.query.count()
-        appointment_count = Appointment.query.count()
-        visit_count = Visit.query.count()
-        dicom_count = DicomImage.query.count()
-        prescription_count = Prescription.query.count()
-        report_count = Report.query.count()
-
-        # Delete in correct order (foreign keys first)
-        Report.query.delete()
-        DicomImage.query.delete()
-        Prescription.query.delete()
-        Visit.query.delete()
-        Appointment.query.delete()
-        Patient.query.delete()
-
-        db.session.commit()
 
         return jsonify(
             {
                 "success": True,
-                "message": "All patient data cleaned successfully",
-                "deleted": {
-                    "patients": patient_count,
-                    "appointments": appointment_count,
-                    "visits": visit_count,
-                    "dicom_images": dicom_count,
-                    "prescriptions": prescription_count,
-                    "reports": report_count,
+                "message": "Logo uploaded successfully",
+                "data": {
+                    "clinic_id": clinic.id,
+                    "logo_url": f"/api/super-admin/clinics/{clinic_id}/logo",
+                    "logo_path": relative_path,
                 },
             }
         ), 200
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({"success": False, "error": f"Cleanup failed: {str(e)}"}), 500
+        return jsonify(
+            {"success": False, "error": f"Failed to upload logo: {str(e)}"}
+        ), 500
+
+
+@super_admin_bp.route("/clinics/<int:clinic_id>/logo", methods=["GET"])
+@jwt_required()
+def get_clinic_logo(clinic_id):
+    """
+    Get clinic logo.
+    Access: super admin only.
+    """
+    current = _current_admin()
+    err = _require_super_admin(current)
+    if err is not None:
+        return err
+
+    clinic = Clinic.query.get(clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    if not clinic.logo_path:
+        return jsonify({"success": False, "error": "No logo set for this clinic"}), 404
+
+    from flask import send_from_directory
+    from app.config import Config
+
+    logo_full_path = os.path.join(Config.PROJECT_ROOT, clinic.logo_path)
+    logo_dir = os.path.dirname(logo_full_path)
+    logo_filename = os.path.basename(logo_full_path)
+
+    if not os.path.exists(logo_full_path):
+        return jsonify(
+            {"success": False, "error": "Logo file not found on server"}
+        ), 404
+
+    return send_from_directory(logo_dir, logo_filename)
+
+
+@super_admin_bp.route("/clinics/<int:clinic_id>/logo", methods=["DELETE"])
+@jwt_required()
+def delete_clinic_logo(clinic_id):
+    """
+    Delete clinic logo.
+    Access: super admin only.
+    """
+    import os
+    from flask import current_app
+
+    current = _current_admin()
+    err = _require_super_admin(current)
+    if err is not None:
+        return err
+
+    clinic = Clinic.query.get(clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    if not clinic.logo_path:
+        return jsonify({"success": False, "error": "No logo set for this clinic"}), 404
+
+    logo_full_path = os.path.join(
+        current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
+    )
+
+    try:
+        if os.path.exists(logo_full_path):
+            os.remove(logo_full_path)
+
+        clinic.logo_path = None
+        db.session.commit()
+
+        log_audit(
+            "clinic",
+            "delete_logo",
+            user_id=current.id,
+            entity_id=str(clinic_id),
+            details={},
+        )
+
+        return jsonify({"success": True, "message": "Logo deleted successfully"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify(
+            {"success": False, "error": f"Failed to delete logo: {str(e)}"}
+        ), 500
 
 
 @super_admin_bp.route("/cleanup/appointments", methods=["DELETE"])
