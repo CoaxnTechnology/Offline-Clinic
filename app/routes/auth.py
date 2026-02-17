@@ -236,7 +236,7 @@ def verify_reset_token():
     Body: { "token": "<token_from_email>" }
     """
     data = request.get_json() or {}
-    token = data.get("token")
+    token = data.get("token") or request.args.get("token")
     if not token:
         return jsonify({"success": False, "error": 'Field "token" is required'}), 400
 
@@ -258,7 +258,7 @@ def reset_password():
     Body: { "token": "<token_from_email>", "new_password": "newpassword123" }
     """
     data = request.get_json() or {}
-    token = data.get("token")
+    token = data.get("token") or request.args.get("token")
     new_password = data.get("new_password")
 
     if not token or not new_password:
@@ -295,7 +295,7 @@ def set_password():
     Body: { "token": "<token_from_welcome_email>", "password": "mypassword123" }
     """
     data = request.get_json() or {}
-    token = data.get("token")
+    token = data.get("token") or request.args.get("token")
     password = data.get("password")
 
     if not token or not password:
