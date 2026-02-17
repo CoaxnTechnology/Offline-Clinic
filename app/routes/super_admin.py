@@ -250,6 +250,71 @@ def create_clinic_with_doctor():
         )
 
 
+@super_admin_bp.route("/clinics/<int:clinic_id>", methods=["PUT"])
+@jwt_required()
+def update_clinic(clinic_id):
+    """
+    Update clinic details.
+    Access: super admin only.
+    """
+    current = _current_admin()
+    err = _require_super_admin(current)
+    if err is not None:
+        return err
+
+    clinic = Clinic.query.get(clinic_id)
+    if not clinic:
+        return jsonify({"success": False, "error": "Clinic not found"}), 404
+
+    data = request.get_json() or {}
+
+    if "hospital_name" in data:
+        clinic.name = data["hospital_name"]
+    if "license_name" in data:
+        # Check uniqueness
+        existing = Clinic.query.filter(Clinic.license_key == data["license_name"], Clinic.id != clinic_id).first()
+        if existing:
+            return jsonify({"success": False, "error": "License name already exists"}), 400
+        clinic.license_key = data["license_name"]
+    if "clinic_address" in data:
+        clinic.address = data["clinic_address"]
+    if "contact_number" in data:
+        clinic.phone = data["contact_number"]
+    if "email" in data:
+        clinic.email = data["email"]
+    if "is_active" in data:
+        clinic.is_active = bool(data["is_active"])
+
+    try:
+        db.session.commit()
+
+        log_audit(
+            "clinic",
+            "update",
+            user_id=current.id,
+            entity_id=str(clinic_id),
+            details=data,
+        )
+
+        return jsonify({
+            "success": True,
+            "data": {
+                "id": clinic.id,
+                "hospital_name": clinic.name,
+                "license_name": clinic.license_key,
+                "clinic_address": clinic.address,
+                "contact_number": clinic.phone,
+                "email": clinic.email,
+                "ae_title": clinic.dicom_ae_title,
+                "is_active": clinic.is_active,
+            },
+            "message": "Clinic updated successfully",
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": f"Failed to update clinic: {str(e)}"}), 500
+
+
 @super_admin_bp.route("/clinics/<int:clinic_id>", methods=["DELETE"])
 @jwt_required()
 def delete_clinic(clinic_id):
