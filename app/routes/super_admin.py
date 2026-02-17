@@ -83,9 +83,11 @@ def get_clinic(clinic_id):
     Get clinic details with doctor info.
     """
     current = _current_admin()
-    err = _require_super_admin(current)
-    if err is not None:
-        return err
+
+    # Super admin can view any clinic, doctor can only view their own
+    if not current.is_super_admin:
+        if current.clinic_id != clinic_id:
+            return jsonify({"success": False, "error": "Not found"}), 404
 
     clinic = Clinic.query.get(clinic_id)
     if not clinic:
@@ -93,15 +95,15 @@ def get_clinic(clinic_id):
 
     doctors = Admin.query.filter_by(clinic_id=clinic.id, role="doctor").all()
 
-    # Flatten first doctor info
+    doctor_name = None
     doctor_info = None
     if doctors:
         d = doctors[0]
+        doctor_name = f"{d.first_name} {d.last_name}".strip()
         doctor_info = {
             "id": d.id,
             "username": d.username,
-            "first_name": d.first_name,
-            "last_name": d.last_name,
+            "doctor_name": doctor_name,
             "email": d.email,
             "phone": d.phone,
             "is_active": d.is_active,
@@ -113,16 +115,17 @@ def get_clinic(clinic_id):
             "success": True,
             "data": {
                 "id": clinic.id,
-                "name": clinic.name,
-                "address": clinic.address,
-                "phone": clinic.phone,
+                "hospital_name": clinic.name,
+                "clinic_address": clinic.address,
+                "contact_number": clinic.phone,
                 "email": clinic.email,
-                "license_key": clinic.license_key,
-                "dicom_ae_title": clinic.dicom_ae_title,
+                "license_name": clinic.license_key,
+                "ae_title": clinic.dicom_ae_title,
                 "is_active": clinic.is_active,
                 "logo_path": clinic.logo_path,
                 "header_text": clinic.header_text,
                 "footer_text": clinic.footer_text,
+                "doctor_name": doctor_name,
                 "doctor": doctor_info,
                 "created_at": clinic.created_at.isoformat()
                 if clinic.created_at

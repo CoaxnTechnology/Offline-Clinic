@@ -310,68 +310,6 @@ def delete_user(admin_id):
 clinic_bp = Blueprint("clinic", __name__, url_prefix="/api/clinic")
 
 
-@clinic_bp.route("", methods=["GET"])
-@jwt_required()
-def get_current_clinic():
-    """
-    Get clinic details with doctor info.
-    Doctor/receptionist: returns their own clinic.
-    Super admin: pass ?clinic_id=5 to get any clinic.
-    """
-    current = _current_admin()
-    clinic_id = current.clinic_id
-
-    # Super admin can view any clinic via query param
-    if current.is_super_admin:
-        clinic_id = request.args.get("clinic_id", type=int) or clinic_id
-
-    if not clinic_id:
-        return jsonify(
-            {"success": False, "error": "clinic_id is required"}
-        ), 400
-
-    clinic = Clinic.query.get(clinic_id)
-    if not clinic:
-        return jsonify({"success": False, "error": "Clinic not found"}), 404
-
-    # Get doctors for this clinic
-    doctors = Admin.query.filter_by(clinic_id=clinic.id, role="doctor").all()
-
-    # Flatten first doctor info (if exists)
-    doctor_info = None
-    if doctors:
-        d = doctors[0]
-        doctor_info = {
-            "id": d.id,
-            "username": d.username,
-            "first_name": d.first_name,
-            "last_name": d.last_name,
-            "email": d.email,
-            "phone": d.phone,
-            "is_active": d.is_active,
-        }
-
-    return jsonify(
-        {
-            "success": True,
-            "data": {
-                "id": clinic.id,
-                "name": clinic.name,
-                "address": clinic.address,
-                "phone": clinic.phone,
-                "email": clinic.email,
-                "license_key": clinic.license_key,
-                "dicom_ae_title": clinic.dicom_ae_title,
-                "is_active": clinic.is_active,
-                "logo_path": clinic.logo_path,
-                "header_text": clinic.header_text,
-                "footer_text": clinic.footer_text,
-                "doctor": doctor_info,
-            },
-        }
-    ), 200
-
-
 @clinic_bp.route("", methods=["PUT"])
 @jwt_required()
 @require_role("doctor")
