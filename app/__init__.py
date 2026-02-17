@@ -81,6 +81,29 @@ def create_app(config_name=None):
 
     @app.errorhandler(Exception)
     def handle_exception(e):
+        from sqlalchemy.exc import IntegrityError
+        db.session.rollback()
+        if isinstance(e, IntegrityError):
+            error_msg = str(e.orig) if hasattr(e, 'orig') else str(e)
+            if "unique" in error_msg.lower() or "duplicate" in error_msg.lower():
+                # Extract field name from error if possible
+                if "username" in error_msg.lower():
+                    return jsonify({"success": False, "error": "Username already exists"}), 400
+                elif "email" in error_msg.lower():
+                    return jsonify({"success": False, "error": "Email already exists"}), 400
+                elif "phone" in error_msg.lower():
+                    return jsonify({"success": False, "error": "Phone number already exists"}), 400
+                elif "license_key" in error_msg.lower():
+                    return jsonify({"success": False, "error": "License key already exists"}), 400
+                elif "accession_number" in error_msg.lower():
+                    return jsonify({"success": False, "error": "Accession number already exists"}), 400
+                else:
+                    return jsonify({"success": False, "error": "A record with this value already exists"}), 400
+            elif "not-null" in error_msg.lower() or "not null" in error_msg.lower():
+                return jsonify({"success": False, "error": "A required field is missing"}), 400
+            elif "foreign key" in error_msg.lower():
+                return jsonify({"success": False, "error": "Referenced record does not exist"}), 400
+            return jsonify({"success": False, "error": "Data conflict. Please check your input."}), 400
         logger.error(f"Unhandled exception: {e}", exc_info=True)
         return jsonify({"success": False, "error": f"An error occurred: {str(e)}"}), 500
 

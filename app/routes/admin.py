@@ -67,12 +67,34 @@ def create_user():
     role = "doctor" if request.blueprint == "admin" else "receptionist"
     clinic_id = current.clinic_id
 
+    # Validate required fields
+    username = (data.get("username") or "").strip()
+    first_name = (data.get("first_name") or "").strip()
+    last_name = (data.get("last_name") or "").strip()
+    email = (data.get("email") or "").strip()
+    phone = (data.get("phone") or "").strip() or None
+
+    if not username:
+        return jsonify({"success": False, "error": "Username is required"}), 400
+    if not first_name:
+        return jsonify({"success": False, "error": "First name is required"}), 400
+    if not email:
+        return jsonify({"success": False, "error": "Email is required"}), 400
+
+    # Check duplicates
+    if Admin.query.filter_by(username=username).first():
+        return jsonify({"success": False, "error": "Username already exists"}), 400
+    if Admin.query.filter_by(email=email).first():
+        return jsonify({"success": False, "error": "Email already exists"}), 400
+    if phone and Admin.query.filter_by(phone=phone).first():
+        return jsonify({"success": False, "error": "Phone number already exists"}), 400
+
     user = Admin(
-        username=data.get("username"),
-        first_name=data.get("first_name"),
-        last_name=data.get("last_name"),
-        email=data.get("email"),
-        phone=data.get("phone"),
+        username=username,
+        first_name=first_name,
+        last_name=last_name,
+        email=email,
+        phone=phone,
         role=role,
         is_active=False,
         is_super_admin=False,
@@ -234,4 +256,45 @@ def update_user(admin_id):
         ),
         200,
     )
+
+
+@admin_bp.route("/<int:admin_id>", methods=["DELETE"])
+@jwt_required()
+def delete_user(admin_id):
+    """Hard-delete a doctor or receptionist."""
+    current = _current_admin()
+    admin = Admin.query.get(admin_id)
+    if not admin or admin.is_super_admin:
+        return jsonify({"success": False, "error": "User not found"}), 404
+
+    # Clinic isolation
+    clinic_id, is_super = get_current_clinic_id()
+    denied = verify_clinic_access(admin, clinic_id, is_super)
+    if denied:
+        return denied
+
+    # Prevent deleting yourself
+    if admin.id == current.id:
+        return jsonify({"success": False, "error": "Cannot delete yourself"}), 400
+
+    try:
+        user_info = {"username": admin.username, "role": admin.role}
+        db.session.delete(admin)
+        db.session.commit()
+
+        log_audit(
+            "admin",
+            "delete",
+            user_id=current.id,
+            entity_id=str(admin_id),
+            details=user_info,
+        )
+
+        return jsonify({
+            "success": True,
+            "message": f"{user_info['role'].capitalize()} '{user_info['username']}' deleted successfully",
+        }), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"success": False, "error": f"Failed to delete: {str(e)}"}), 500
 
