@@ -75,23 +75,16 @@ def create_clinic_with_doctor():
 
     Body JSON:
     {
-      "clinic": {
-        "name": "Sunshine Hospital",        # required
-        "address": "123 Medical Rd",        # optional
-        "phone": "+91 99999 99999",         # optional
-        "email": "info@sunshine.com",       # optional
-        "license_key": "SUN-0001"           # required, unique
-      },
-      "doctor": {
-        "username": "drsunshine",           # required, unique
-        "email": "doctor@sunshine.com",     # required, unique
-        "first_name": "Sunshine",           # required
-        "last_name": "Doctor",              # required
-        "phone": "+91 88888 88888"          # optional
-      }
+      "hospital_name": "Sunshine Hospital",    # required
+      "license_name": "SUN-0001",             # required, unique
+      "doctor_name": "Dr. Sunshine",           # required
+      "contact_number": "+91 99999 99999",     # required
+      "email": "doctor@sunshine.com",          # required, unique
+      "clinic_address": "123 Medical Rd"       # optional
     }
 
-    Returns clinic + doctor info and a set‑password link is emailed to the doctor.
+    AE Title is auto-generated.
+    Returns clinic + doctor info and a set-password link.
     """
     current = _current_admin()
     err = _require_super_admin(current)
@@ -99,59 +92,46 @@ def create_clinic_with_doctor():
         return err
 
     data = request.get_json() or {}
-    clinic_data = data.get("clinic") or {}
-    doctor_data = data.get("doctor") or {}
 
-    # Validate clinic fields
-    name = (clinic_data.get("name") or "").strip()
-    license_key = (clinic_data.get("license_key") or "").strip()
-    if not name or not license_key:
+    # Validate required fields
+    hospital_name = (data.get("hospital_name") or "").strip()
+    license_name = (data.get("license_name") or "").strip()
+    doctor_name = (data.get("doctor_name") or "").strip()
+    contact_number = (data.get("contact_number") or "").strip()
+    email = (data.get("email") or "").strip()
+    clinic_address = (data.get("clinic_address") or "").strip() or None
+
+    if not hospital_name or not license_name or not doctor_name or not contact_number or not email:
         return (
             jsonify(
                 {
                     "success": False,
-                    "error": "clinic.name and clinic.license_key are required",
+                    "error": "hospital_name, license_name, doctor_name, contact_number and email are required",
                 }
             ),
             400,
         )
 
-    if Clinic.query.filter_by(license_key=license_key).first():
+    if Clinic.query.filter_by(license_key=license_name).first():
         return (
             jsonify(
                 {
                     "success": False,
-                    "error": "Clinic with this license_key already exists",
+                    "error": "Clinic with this license_name already exists",
                 }
             ),
             400,
         )
 
-    # Validate doctor fields
-    username = (doctor_data.get("username") or "").strip()
-    email = (doctor_data.get("email") or "").strip()
-    first_name = (doctor_data.get("first_name") or "").strip()
-    last_name = (doctor_data.get("last_name") or "").strip()
-    phone = (doctor_data.get("phone") or "").strip() or None
+    # Auto-generate username from doctor_name (e.g. "Dr. Sunshine" -> "dr.sunshine")
+    username = doctor_name.lower().replace(" ", "").replace(".", "")
+    # Ensure unique username
+    base_username = username
+    counter = 1
+    while Admin.query.filter_by(username=username).first():
+        username = f"{base_username}{counter}"
+        counter += 1
 
-    if not username or not email or not first_name or not last_name:
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "error": "doctor.username, doctor.email, doctor.first_name and doctor.last_name are required",
-                }
-            ),
-            400,
-        )
-
-    if Admin.query.filter_by(username=username).first():
-        return (
-            jsonify(
-                {"success": False, "error": "Admin with this username already exists"}
-            ),
-            400,
-        )
     if Admin.query.filter_by(email=email).first():
         return (
             jsonify(
@@ -163,12 +143,12 @@ def create_clinic_with_doctor():
     try:
         # 1) Create clinic (AE Title will be set after we get clinic.id)
         clinic = Clinic(
-            name=name,
-            address=clinic_data.get("address"),
-            phone=clinic_data.get("phone"),
-            email=clinic_data.get("email"),
-            license_key=license_key,
-            max_doctors=clinic_data.get("max_doctors") or 1,
+            name=hospital_name,
+            address=clinic_address,
+            phone=contact_number,
+            email=email,
+            license_key=license_name,
+            max_doctors=1,
             is_active=True,
         )
         db.session.add(clinic)
@@ -187,9 +167,9 @@ def create_clinic_with_doctor():
             clinic_id=clinic.id,
             username=username,
             email=email,
-            first_name=first_name,
-            last_name=last_name,
-            phone=phone,
+            first_name=doctor_name,
+            last_name="",
+            phone=contact_number,
             role="doctor",
             is_active=False,  # will activate after setting password
             is_super_admin=False,
@@ -201,7 +181,7 @@ def create_clinic_with_doctor():
         db.session.add(doctor)
         db.session.commit()
 
-        # 3) Send welcome email with set‑password link
+        # 3) Send welcome email with set-password link
         base_url = (
             Config.FRONTEND_BASE_URL
             or Config.PUBLIC_BASE_URL
@@ -230,21 +210,29 @@ def create_clinic_with_doctor():
                 {
                     "success": True,
                     "data": {
-                        "clinic": clinic.to_dict(),
+                        "clinic": {
+                            "id": clinic.id,
+                            "hospital_name": clinic.name,
+                            "license_name": clinic.license_key,
+                            "clinic_address": clinic.address,
+                            "contact_number": clinic.phone,
+                            "email": clinic.email,
+                            "ae_title": clinic.dicom_ae_title,
+                            "is_active": clinic.is_active,
+                        },
                         "doctor": {
                             "id": doctor.id,
                             "username": doctor.username,
+                            "doctor_name": doctor.first_name,
                             "email": doctor.email,
-                            "first_name": doctor.first_name,
-                            "last_name": doctor.last_name,
-                            "phone": doctor.phone,
+                            "contact_number": doctor.phone,
                             "role": doctor.role,
                             "clinic_id": doctor.clinic_id,
                             "is_active": doctor.is_active,
                         },
                         "set_password_link": reset_link,
                     },
-                    "message": "Clinic and first doctor created successfully",
+                    "message": "Clinic and doctor created successfully",
                 }
             ),
             201,
