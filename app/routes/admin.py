@@ -501,6 +501,60 @@ def update_clinic_by_id(clinic_id):
         if "footer_text" in data:
             clinic.footer_text = data["footer_text"]
 
+        # Handle logo (base64 in JSON)
+        if "logo" in data and data["logo"]:
+            import base64
+
+            try:
+                logo_data = data["logo"]
+                if "," in logo_data:
+                    header, logo_data = logo_data.split(",", 1)
+                    ext = ".png"
+                    if "jpeg" in header or "jpg" in header:
+                        ext = ".jpg"
+                    elif "svg" in header:
+                        ext = ".svg"
+                    elif "webp" in header:
+                        ext = ".webp"
+                else:
+                    ext = ".png"
+
+                image_bytes = base64.b64decode(logo_data)
+
+                upload_folder = os.path.join(
+                    current_app.config.get("PROJECT_ROOT", ""), "clinic_logos"
+                )
+                os.makedirs(upload_folder, exist_ok=True)
+
+                if clinic.logo_path:
+                    old_path = os.path.join(
+                        current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
+                    )
+                    if os.path.exists(old_path):
+                        os.remove(old_path)
+
+                filename = f"clinic_{clinic.id}_logo{ext}"
+                filepath = os.path.join(upload_folder, filename)
+
+                with open(filepath, "wb") as f:
+                    f.write(image_bytes)
+
+                clinic.logo_path = os.path.join("clinic_logos", filename)
+            except Exception as e:
+                return jsonify(
+                    {"success": False, "error": f"Invalid logo data: {str(e)}"}
+                ), 400
+
+        # Handle remove_logo flag
+        if data.get("remove_logo") == True or data.get("remove_logo") == "true":
+            if clinic.logo_path:
+                old_path = os.path.join(
+                    current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
+                )
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+                clinic.logo_path = None
+
     try:
         db.session.commit()
 

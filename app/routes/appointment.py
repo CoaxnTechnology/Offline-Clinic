@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.models import Appointment, Patient, Admin, DicomImage
+from app.models import Appointment, Patient, Admin, DicomImage, Prescription
 from app.extensions import db
 from app.utils.decorators import (
     require_role,
@@ -150,8 +150,6 @@ def list_appointments():
     # Filter by doctor_id (Admin.id) – used by doctor dashboard
     if doctor_id:
         try:
-            from app.models import Admin
-
             doctor_admin = Admin.query.get(doctor_id)
         except Exception:
             doctor_admin = None
@@ -256,8 +254,6 @@ def list_with_doctor_appointments_for_consultant():
     Query params:
         page, limit: pagination (optional, defaults: page=1, limit=20)
     """
-    from app.models import Admin, Prescription
-
     # Get current doctor user
     user_id = int(get_jwt_identity())
     current_user = Admin.query.get(user_id)
@@ -452,8 +448,6 @@ def create_appointment():
         ), 404
 
     # Step 4: Determine doctor name automatically
-    from app.models import Admin
-
     user_id = int(get_jwt_identity())
     current_user = Admin.query.get(user_id)
 
