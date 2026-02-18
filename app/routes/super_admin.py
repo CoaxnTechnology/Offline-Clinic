@@ -190,9 +190,13 @@ def update_clinic(clinic_id):
     if not clinic:
         return jsonify({"success": False, "error": "Clinic not found"}), 404
 
-    # Check if multipart form data (logo upload)
-    if request.content_type and "multipart/form-data" in request.content_type:
-        # Handle multipart form data
+    # Check if multipart form data
+    is_multipart = (
+        request.content_type and "multipart/form-data" in request.content_type
+    )
+
+    # Get fields from either form-data or JSON
+    if is_multipart:
         hospital_name = request.form.get("hospital_name")
         clinic_address = request.form.get("clinic_address")
         contact_number = request.form.get("contact_number")
@@ -203,191 +207,106 @@ def update_clinic(clinic_id):
         is_active = request.form.get("is_active")
         remove_logo = request.form.get("remove_logo", "").lower() == "true"
         logo_file = request.files.get("logo")
+        logo_path_input = request.form.get("logo_path")
+        logo_input = request.form.get("logo")
+    else:
+        # Handle JSON
+        data = request.get_json() or {}
+        hospital_name = data.get("hospital_name")
+        clinic_address = data.get("clinic_address")
+        contact_number = data.get("contact_number")
+        email = data.get("email")
+        header_text = data.get("header_text")
+        footer_text = data.get("footer_text")
+        license_name = data.get("license_name")
+        is_active = data.get("is_active")
+        remove_logo = data.get("remove_logo") in [True, "true", "True"]
+        logo_file = None
+        logo_path_input = data.get("logo_path")
+        logo_input = data.get("logo")
 
-        # Super admin can update all fields, doctors can only update limited fields
-        if is_doctor:
-            if hospital_name:
-                clinic.name = hospital_name
-            if clinic_address is not None:
-                clinic.address = clinic_address
-            if contact_number is not None:
-                clinic.phone = contact_number
-            if email is not None:
-                clinic.email = email
-        else:
-            if hospital_name:
-                clinic.name = hospital_name
-            if license_name:
-                existing = Clinic.query.filter(
-                    Clinic.license_key == license_name, Clinic.id != clinic_id
-                ).first()
-                if existing:
-                    return jsonify(
-                        {"success": False, "error": "License name already exists"}
-                    ), 400
-                clinic.license_key = license_name
-            if clinic_address is not None:
-                clinic.address = clinic_address
-            if contact_number is not None:
-                clinic.phone = contact_number
-            if email is not None:
-                clinic.email = email
-            if is_active is not None:
-                clinic.is_active = is_active.lower() == "true"
+    # Update all fields
+    if hospital_name:
+        clinic.name = hospital_name
+    if clinic_address is not None:
+        clinic.address = clinic_address
+    if contact_number is not None:
+        clinic.phone = contact_number
+    if email is not None:
+        clinic.email = email
+    if header_text is not None:
+        clinic.header_text = header_text
+    if footer_text is not None:
+        clinic.footer_text = footer_text
 
-        # Common fields
-        if header_text is not None:
-            clinic.header_text = header_text
-        if footer_text is not None:
-            clinic.footer_text = footer_text
+    # Super admin only fields
+    if not is_doctor:
+        if license_name:
+            existing = Clinic.query.filter(
+                Clinic.license_key == license_name, Clinic.id != clinic_id
+            ).first()
+            if existing:
+                return jsonify(
+                    {"success": False, "error": "License name already exists"}
+                ), 400
+            clinic.license_key = license_name
+        if is_active is not None:
+            clinic.is_active = (
+                is_active.lower() == "true"
+                if isinstance(is_active, str)
+                else bool(is_active)
+            )
 
-        # Handle logo
-        if remove_logo and clinic.logo_path:
+    # Handle logo - priority: file > logo_path > logo (base64/path) > remove
+    final_logo_path = None
+
+    # 1. Check if logo file uploaded
+    if logo_file and logo_file.filename:
+        allowed_extensions = {".jpg", ".jpeg", ".png", ".svg", ".webp"}
+        ext = os.path.splitext(secure_filename(logo_file.filename))[1].lower()
+        if ext not in allowed_extensions:
+            return jsonify(
+                {
+                    "success": False,
+                    "error": f"Invalid file type. Allowed: {', '.join(allowed_extensions)}",
+                }
+            ), 400
+
+        upload_folder = os.path.join(
+            current_app.config.get("PROJECT_ROOT", ""), "clinic_logos"
+        )
+        os.makedirs(upload_folder, exist_ok=True)
+
+        # Remove old logo if exists
+        if clinic.logo_path:
             old_path = os.path.join(
                 current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
             )
             if os.path.exists(old_path):
                 os.remove(old_path)
-            clinic.logo_path = None
 
-        if logo_file and logo_file.filename:
-            allowed_extensions = {".jpg", ".jpeg", ".png", ".svg", ".webp"}
-            ext = os.path.splitext(secure_filename(logo_file.filename))[1].lower()
-            if ext not in allowed_extensions:
-                return jsonify(
-                    {
-                        "success": False,
-                        "error": f"Invalid file type. Allowed: {', '.join(allowed_extensions)}",
-                    }
-                ), 400
+        # Use original filename with clinic_id prefix
+        filename = f"clinic_{clinic.id}_{secure_filename(logo_file.filename)}"
+        filepath = os.path.join(upload_folder, filename)
+        logo_file.save(filepath)
+        final_logo_path = os.path.join("clinic_logos", filename)
+    # 2. Check if logo_path field
+    elif logo_path_input:
+        final_logo_path = logo_path_input
+    # 3. Check if logo field as text/path
+    elif logo_input:
+        final_logo_path = logo_input
+    # 4. Check remove_logo flag
+    elif remove_logo and clinic.logo_path:
+        old_path = os.path.join(
+            current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
+        )
+        if os.path.exists(old_path):
+            os.remove(old_path)
+        clinic.logo_path = None
 
-            upload_folder = os.path.join(
-                current_app.config.get("PROJECT_ROOT", ""), "clinic_logos"
-            )
-            os.makedirs(upload_folder, exist_ok=True)
-
-            # Remove old logo if exists
-            if clinic.logo_path:
-                old_path = os.path.join(
-                    current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
-                )
-                if os.path.exists(old_path):
-                    os.remove(old_path)
-
-            filename = f"clinic_{clinic.id}_logo{ext}"
-            filepath = os.path.join(upload_folder, filename)
-            logo_file.save(filepath)
-            clinic.logo_path = os.path.join("clinic_logos", filename)
-    else:
-        # Handle JSON
-        data = request.get_json() or {}
-
-        # Super admin can update all fields, doctors can only update limited fields
-        if is_doctor:
-            if "hospital_name" in data:
-                clinic.name = data["hospital_name"]
-            if "clinic_address" in data:
-                clinic.address = data["clinic_address"]
-            if "contact_number" in data:
-                clinic.phone = data["contact_number"]
-            if "email" in data:
-                clinic.email = data["email"]
-        else:
-            if "hospital_name" in data:
-                clinic.name = data["hospital_name"]
-            if "license_name" in data:
-                existing = Clinic.query.filter(
-                    Clinic.license_key == data["license_name"], Clinic.id != clinic_id
-                ).first()
-                if existing:
-                    return jsonify(
-                        {"success": False, "error": "License name already exists"}
-                    ), 400
-                clinic.license_key = data["license_name"]
-            if "clinic_address" in data:
-                clinic.address = data["clinic_address"]
-            if "contact_number" in data:
-                clinic.phone = data["contact_number"]
-            if "email" in data:
-                clinic.email = data["email"]
-            if "is_active" in data:
-                clinic.is_active = bool(data["is_active"])
-
-        # Common fields for both
-        if "header_text" in data:
-            clinic.header_text = data["header_text"]
-        if "footer_text" in data:
-            clinic.footer_text = data["footer_text"]
-
-        # Handle logo_path (direct path like "clinic_logos/test1.jpg")
-        if "logo_path" in data and data["logo_path"]:
-            clinic.logo_path = data["logo_path"]
-
-        # Handle logo - can be base64 or a file path
-        elif "logo" in data and data["logo"]:
-            import base64
-
-            logo_data = data["logo"]
-
-            # Check if it's a file path (contains / or \)
-            if "/" in logo_data or "\\" in logo_data:
-                # It's a path - just use it directly
-                clinic.logo_path = logo_data
-            else:
-                # It's base64 - decode and save
-                try:
-                    # Remove data:image/xxx;base64, prefix if present
-                    if "," in logo_data:
-                        header, logo_data = logo_data.split(",", 1)
-                        # Extract extension from header (e.g., "data:image/png;base64")
-                        ext = ".png"
-                        if "jpeg" in header or "jpg" in header:
-                            ext = ".jpg"
-                        elif "svg" in header:
-                            ext = ".svg"
-                        elif "webp" in header:
-                            ext = ".webp"
-                    else:
-                        # Assume PNG if no header
-                        ext = ".png"
-
-                    # Decode base64
-                    image_bytes = base64.b64decode(logo_data)
-
-                    upload_folder = os.path.join(
-                        current_app.config.get("PROJECT_ROOT", ""), "clinic_logos"
-                    )
-                    os.makedirs(upload_folder, exist_ok=True)
-
-                    # Remove old logo if exists
-                    if clinic.logo_path:
-                        old_path = os.path.join(
-                            current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
-                        )
-                        if os.path.exists(old_path):
-                            os.remove(old_path)
-
-                    filename = f"clinic_{clinic.id}_logo{ext}"
-                    filepath = os.path.join(upload_folder, filename)
-
-                    with open(filepath, "wb") as f:
-                        f.write(image_bytes)
-
-                    clinic.logo_path = os.path.join("clinic_logos", filename)
-                except Exception as e:
-                    return jsonify(
-                        {"success": False, "error": f"Invalid logo data: {str(e)}"}
-                    ), 400
-
-        # Handle remove_logo flag
-        if data.get("remove_logo") == True or data.get("remove_logo") == "true":
-            if clinic.logo_path:
-                old_path = os.path.join(
-                    current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
-                )
-                if os.path.exists(old_path):
-                    os.remove(old_path)
-                clinic.logo_path = None
+    if final_logo_path:
+        clinic.logo_path = final_logo_path
 
     try:
         db.session.commit()
