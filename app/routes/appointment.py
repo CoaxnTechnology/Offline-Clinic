@@ -285,48 +285,45 @@ def list_with_doctor_appointments_for_consultant():
         Appointment.doctor == doctor_name,
         Appointment.status.in_(["With Doctor", "Sent to DICOM", "Study Completed"]),
         Appointment.date == filter_date_obj,
+    ).options(
+        # Eager load patient to avoid N+1 queries
     )
     if not is_super and clinic_id:
         query = query.filter(Appointment.clinic_id == clinic_id)
 
+    # Get total count before pagination
     total = query.count()
 
+    # Fetch appointments with eager loading
     appointments = query.order_by(Appointment.time.asc()).paginate(
         page=page, per_page=limit, error_out=False
     )
 
+    # Pre-fetch all patients and prescriptions in one query each
+    patient_ids = [apt.patient_id for apt in appointments.items]
+    patients_map = {}
+    prescriptions_map = {}
+    if patient_ids:
+        patients = Patient.query.filter(
+            Patient.id.in_(patient_ids), Patient.deleted_at.is_(None)
+        ).all()
+        patients_map = {p.id: p for p in patients}
+
+        # Pre-fetch latest prescription per patient
+        rx_list = (
+            Prescription.query.filter(Prescription.patient_id.in_(patient_ids))
+            .order_by(Prescription.created_at.desc())
+            .all()
+        )
+        for rx in rx_list:
+            if rx.patient_id not in prescriptions_map:
+                prescriptions_map[rx.patient_id] = rx
+
     result = []
     for apt in appointments.items:
-        patient = (
-            Patient.query.filter_by(id=apt.patient_id)
-            .filter(Patient.deleted_at.is_(None))
-            .first()
-        )
+        patient = patients_map.get(apt.patient_id)
+        latest_rx = prescriptions_map.get(apt.patient_id)
 
-        # Latest prescription for this patient (most recent created_at)
-        latest_rx = (
-            Prescription.query.filter_by(patient_id=apt.patient_id)
-            .order_by(Prescription.created_at.desc())
-            .first()
-        )
-
-        # Get doctor details from Admin table
-        doctor_details = None
-        if apt.doctor:
-            doctor_admin = Admin.query.filter(
-                Admin.clinic_id == apt.clinic_id,
-                (Admin.first_name + " " + Admin.last_name).ilike(f"%{apt.doctor}%")
-                | Admin.username.ilike(f"%{apt.doctor}%"),
-            ).first()
-            if doctor_admin:
-                doctor_details = {
-                    "id": doctor_admin.id,
-                    "name": f"{doctor_admin.first_name or ''} {doctor_admin.last_name or ''}".strip(),
-                    "username": doctor_admin.username,
-                    "email": doctor_admin.email,
-                }
-
-        rx_dict = latest_rx.to_dict() if latest_rx else None
         rx_dict = latest_rx.to_dict() if latest_rx else None
 
         result.append(
@@ -335,7 +332,6 @@ def list_with_doctor_appointments_for_consultant():
                 "patient_id": apt.patient_id,
                 "patient": _patient_to_dict(patient) if patient else None,
                 "doctor": apt.doctor,
-                "doctor_details": doctor_details,
                 "date": apt.date.isoformat() if apt.date else None,
                 "time": apt.time,
                 "status": apt.status,
@@ -343,7 +339,6 @@ def list_with_doctor_appointments_for_consultant():
                 "requested_procedure_id": apt.requested_procedure_id,
                 "scheduled_procedure_step_id": apt.scheduled_procedure_step_id,
                 "created_at": apt.created_at.isoformat(),
-                # Prescription info for doctor dashboard
                 "prescription_id": rx_dict["id"] if rx_dict else None,
                 "prescription_pdf_path": rx_dict["pdf_path"] if rx_dict else None,
             }
