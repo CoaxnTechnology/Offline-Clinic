@@ -95,6 +95,8 @@ def list_clinics():
                 "logo_path": c.logo_path,
                 "logo_url": logo_url,
                 "doctor": doctor_info,
+                "dicom_mwl_port": Config.DICOM_MWL_PORT,
+                "dicom_storage_port": Config.DICOM_STORAGE_PORT,
             }
         )
 
@@ -157,6 +159,8 @@ def get_clinic(clinic_id):
                 "header_text": clinic.header_text,
                 "footer_text": clinic.footer_text,
                 "doctor": doctor_info,
+                "dicom_mwl_port": Config.DICOM_MWL_PORT,
+                "dicom_storage_port": Config.DICOM_STORAGE_PORT,
                 "created_at": clinic.created_at.isoformat()
                 if clinic.created_at
                 else None,
