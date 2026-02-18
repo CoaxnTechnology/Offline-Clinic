@@ -52,9 +52,9 @@ def list_appointments():
         current_user = None
 
     # Default status for all users (doctor and non-doctor) to show appointments
-    # This ensures dashboard always shows appointments with all statuses
+    # Waiting status is for receptionists - doctors should not see Waiting appointments
     if not status:
-        status = "Waiting,With Doctor,Sent to DICOM,Study Completed,Completed,With Technician"
+        status = "With Doctor,Sent to DICOM,Study Completed,Completed,With Technician"
 
     if current_user and current_user.role == "doctor":
         # Build the same display name used when creating appointments
@@ -62,11 +62,11 @@ def list_appointments():
         if current_user.last_name:
             current_doctor_name = f"{current_doctor_name} {current_user.last_name}"
 
-        # If frontend did not explicitly request another status,
-        # default to showing all statuses for doctor dashboard.
-        # Appointments stay visible until doctor explicitly sets "Completed".
+        # Doctors don't see Waiting appointments - those are handled by receptionists
         if not status:
-            status = "Waiting,With Doctor,Sent to DICOM,Study Completed,Completed,With Technician"
+            status = (
+                "With Doctor,Sent to DICOM,Study Completed,Completed,With Technician"
+            )
 
         # If no explicit doctor/doctor_id filter was provided,
         # automatically filter by this doctor.
