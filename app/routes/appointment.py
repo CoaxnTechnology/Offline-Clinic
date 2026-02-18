@@ -52,9 +52,9 @@ def list_appointments():
         current_user = None
 
     # Default status for all users (doctor and non-doctor) to show appointments
-    # Waiting status is for receptionists - doctors should not see Waiting appointments
+    # This ensures dashboard always shows appointments with all statuses
     if not status:
-        status = "With Doctor,Sent to DICOM,Study Completed,Completed,With Technician"
+        status = "Waiting,With Doctor,Sent to DICOM,Study Completed,Completed,With Technician"
 
     if current_user and current_user.role == "doctor":
         # Build the same display name used when creating appointments
@@ -62,11 +62,11 @@ def list_appointments():
         if current_user.last_name:
             current_doctor_name = f"{current_doctor_name} {current_user.last_name}"
 
-        # Doctors don't see Waiting appointments - those are handled by receptionists
+        # If frontend did not explicitly request another status,
+        # default to showing all statuses for doctor dashboard.
+        # Appointments stay visible until doctor explicitly sets "Completed".
         if not status:
-            status = (
-                "With Doctor,Sent to DICOM,Study Completed,Completed,With Technician"
-            )
+            status = "Waiting,With Doctor,Sent to DICOM,Study Completed,Completed,With Technician"
 
         # If no explicit doctor/doctor_id filter was provided,
         # automatically filter by this doctor.
@@ -277,12 +277,13 @@ def list_with_doctor_appointments_for_consultant():
     # Clinic isolation
     clinic_id, is_super = get_current_clinic_id()
 
-    # Base query: this doctor, all statuses except Completed, not deleted
+    # Base query: this doctor, in-progress statuses (With Doctor, Sent to DICOM, Study Completed)
+    # Completed appointments are removed from doctor dashboard
     filter_date_obj = date.today()
     query = Appointment.query.filter(
         Appointment.deleted_at.is_(None),
         Appointment.doctor == doctor_name,
-        Appointment.status != "Completed",
+        Appointment.status.in_(["With Doctor", "Sent to DICOM", "Study Completed"]),
         Appointment.date == filter_date_obj,
     )
     if not is_super and clinic_id:
