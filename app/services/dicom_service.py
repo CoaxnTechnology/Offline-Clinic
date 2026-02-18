@@ -120,8 +120,10 @@ def handle_mwl_find(event):
 
     # Production: Log MWL query
     caller_ae = event.assoc.requestor.ae_title if hasattr(event, "assoc") else "unknown"
+    # Extract clinic_id from caller AE title for per-clinic MWL filtering
+    clinic_id = get_clinic_id_from_ae_title(caller_ae)
     logger.info(
-        f"MWL query from {caller_ae} - Date: {query_date}, Modality: {modality}"
+        f"MWL query from {caller_ae} - Date: {query_date}, Modality: {modality}, Clinic: {clinic_id}"
     )
 
     def _run_query():
@@ -140,6 +142,9 @@ def handle_mwl_find(event):
             Appointment.accession_number.isnot(None),
             Appointment.deleted_at.is_(None),
         )
+        # Filter by clinic_id if provided (per-clinic MWL isolation)
+        if clinic_id:
+            query = query.filter(Appointment.clinic_id == clinic_id)
         # Filter by date if provided
         if query_date:
             query_date_str = str(query_date)
