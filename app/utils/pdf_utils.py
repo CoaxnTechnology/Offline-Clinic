@@ -1,6 +1,7 @@
 """
 PDF Generation Utilities using WeasyPrint
 """
+
 import os
 from datetime import datetime
 from app.config import Config
@@ -13,117 +14,142 @@ logger = logging.getLogger(__name__)
 # Styled prescription: WeasyPrint first; if missing/fails, ReportLab fallback (same style, no system deps).
 try:
     from weasyprint import HTML, CSS
+
     WEASYPRINT_AVAILABLE = True
 except ImportError:
     WEASYPRINT_AVAILABLE = False
-    logger.warning("WeasyPrint not available, using ReportLab for styled prescription PDFs.")
+    logger.warning(
+        "WeasyPrint not available, using ReportLab for styled prescription PDFs."
+    )
 try:
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.platypus import (
+        SimpleDocTemplate,
+        Paragraph,
+        Spacer,
+        Table,
+        TableStyle,
+    )
+
     REPORTLAB_AVAILABLE = True
 except ImportError:
     REPORTLAB_AVAILABLE = False
 
 
-def generate_pdf_report(study_instance_uid, patient=None, images=None, output_path=None, report_number=None):
+def generate_pdf_report(
+    study_instance_uid, patient=None, images=None, output_path=None, report_number=None
+):
     """
     Generate PDF report for a DICOM study using WeasyPrint
-    
+
     Args:
         study_instance_uid: Study Instance UID
         patient: Patient object (optional)
         images: List of DicomImage objects (optional)
         output_path: Output path for PDF (optional)
         report_number: Report number (optional)
-    
+
     Returns:
         str: Path to generated PDF file
     """
     # Create reports directory if it doesn't exist
     reports_dir = Config.PDF_REPORTS_PATH
     os.makedirs(reports_dir, exist_ok=True, mode=0o755)
-    
+
     # Generate output path
     if not output_path:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        safe_uid = study_instance_uid.replace('.', '_')[:50]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_uid = study_instance_uid.replace(".", "_")[:50]
         output_path = os.path.join(reports_dir, f"report_{safe_uid}_{timestamp}.pdf")
-    
+
     # Ensure absolute path
     output_path = os.path.abspath(output_path)
-    
+
     # Fetch data if not provided
     if not images:
         images = DicomImage.query.filter_by(study_instance_uid=study_instance_uid).all()
-    
+
     if not patient and images:
         patient_id = images[0].patient_id if images else None
         if patient_id:
             patient = Patient.query.get(patient_id)
-    
+
     # Get study info from first image
     study_info = {}
     if images:
         first_image = images[0]
         study_info = {
-            'study_date': first_image.study_date,
-            'study_time': first_image.study_time,
-            'study_description': first_image.study_description,
-            'accession_number': first_image.accession_number,
-            'referring_physician': first_image.referring_physician,
-            'institution_name': first_image.institution_name,
-            'modality': first_image.modality,
+            "study_date": first_image.study_date,
+            "study_time": first_image.study_time,
+            "study_description": first_image.study_description,
+            "accession_number": first_image.accession_number,
+            "referring_physician": first_image.referring_physician,
+            "institution_name": first_image.institution_name,
+            "modality": first_image.modality,
         }
-    
+
     # Generate HTML content
     html_content = generate_report_html(
         study_instance_uid=study_instance_uid,
         patient=patient,
         images=images,
         study_info=study_info,
-        report_number=report_number
+        report_number=report_number,
     )
-    
+
     # Generate PDF
     if WEASYPRINT_AVAILABLE:
         try:
             # Generate PDF from HTML
             HTML(string=html_content).write_pdf(
-                output_path,
-                stylesheets=[CSS(string=get_report_css())]
+                output_path, stylesheets=[CSS(string=get_report_css())]
             )
             logger.info(f"PDF report generated: {output_path}")
             return output_path
         except Exception as e:
             logger.error(f"Error generating PDF with WeasyPrint: {e}", exc_info=True)
             # Fallback to placeholder
-            return generate_placeholder_report(output_path, study_instance_uid, patient, images)
+            return generate_placeholder_report(
+                output_path, study_instance_uid, patient, images
+            )
     else:
         # Fallback to placeholder if WeasyPrint not available
         logger.warning("WeasyPrint not available, creating placeholder report")
-        return generate_placeholder_report(output_path, study_instance_uid, patient, images)
+        return generate_placeholder_report(
+            output_path, study_instance_uid, patient, images
+        )
 
 
-def generate_report_html(study_instance_uid, patient=None, images=None, study_info=None, report_number=None):
+def generate_report_html(
+    study_instance_uid, patient=None, images=None, study_info=None, report_number=None
+):
     """Generate HTML content for PDF report"""
-    
+
     patient_name = f"{patient.first_name} {patient.last_name}" if patient else "Unknown"
     patient_id = patient.id if patient else "N/A"
-    patient_dob = patient.date_of_birth.strftime('%Y-%m-%d') if patient and patient.date_of_birth else "N/A"
+    patient_dob = (
+        patient.date_of_birth.strftime("%Y-%m-%d")
+        if patient and patient.date_of_birth
+        else "N/A"
+    )
     patient_gender = patient.gender if patient else "N/A"
-    
-    study_date = study_info.get('study_date').strftime('%Y-%m-%d') if study_info.get('study_date') else "N/A"
-    study_desc = study_info.get('study_description', 'N/A')
-    modality = study_info.get('modality', 'N/A')
-    accession = study_info.get('accession_number', 'N/A')
-    referring_physician = study_info.get('referring_physician', 'N/A')
-    institution = study_info.get('institution_name', 'N/A')
-    
+
+    study_date = (
+        study_info.get("study_date").strftime("%Y-%m-%d")
+        if study_info.get("study_date")
+        else "N/A"
+    )
+    study_desc = study_info.get("study_description", "N/A")
+    modality = study_info.get("modality", "N/A")
+    accession = study_info.get("accession_number", "N/A")
+    referring_physician = study_info.get("referring_physician", "N/A")
+    institution = study_info.get("institution_name", "N/A")
+
     image_count = len(images) if images else 0
-    
+
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -134,8 +160,8 @@ def generate_report_html(study_instance_uid, patient=None, images=None, study_in
     <body>
         <div class="header">
             <h1>DICOM Study Report</h1>
-            <p class="report-number">Report Number: {report_number or 'N/A'}</p>
-            <p class="report-date">Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+            <p class="report-number">Report Number: {report_number or "N/A"}</p>
+            <p class="report-date">Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
         </div>
         
         <div class="section">
@@ -165,7 +191,7 @@ def generate_report_html(study_instance_uid, patient=None, images=None, study_in
             <h2>Images Summary</h2>
             <p><strong>Total Images:</strong> {image_count}</p>
     """
-    
+
     # Add image thumbnails if available
     if images:
         html += "<div class='images-grid'>"
@@ -173,7 +199,7 @@ def generate_report_html(study_instance_uid, patient=None, images=None, study_in
             if img.thumbnail_path and os.path.exists(img.thumbnail_path):
                 html += f"<div class='image-item'><p>Image {img.instance_number or 'N/A'}</p></div>"
         html += "</div>"
-    
+
     html += """
         </div>
         
@@ -184,7 +210,7 @@ def generate_report_html(study_instance_uid, patient=None, images=None, study_in
     </body>
     </html>
     """
-    
+
     return html
 
 
@@ -274,78 +300,88 @@ def get_report_css():
     """
 
 
-def generate_placeholder_report(output_path, study_instance_uid, patient=None, images=None):
+def generate_placeholder_report(
+    output_path, study_instance_uid, patient=None, images=None
+):
     """Generate placeholder text file if WeasyPrint not available"""
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         f.write("=" * 60 + "\n")
         f.write("DICOM STUDY REPORT\n")
         f.write("=" * 60 + "\n\n")
         f.write(f"Report Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
         f.write(f"Study Instance UID: {study_instance_uid}\n\n")
-        
+
         if patient:
             f.write("Patient Information:\n")
             f.write(f"  ID: {patient.id}\n")
             f.write(f"  Name: {patient.first_name} {patient.last_name}\n")
             f.write(f"  DOB: {patient.date_of_birth}\n")
             f.write(f"  Gender: {patient.gender}\n\n")
-        
+
         if images:
             f.write(f"Total Images: {len(images)}\n\n")
             f.write("Note: Full PDF generation requires WeasyPrint.\n")
             f.write("Install system dependencies:\n")
-            f.write("  sudo apt install libpango-1.0-0 libharfbuzz0b libpangocairo-1.0-0 libcairo2\n")
-    
+            f.write(
+                "  sudo apt install libpango-1.0-0 libharfbuzz0b libpangocairo-1.0-0 libcairo2\n"
+            )
+
     logger.warning(f"Placeholder report created: {output_path}")
     return output_path
 
 
-def generate_prescription_pdf(prescription, patient=None, doctor=None, output_path=None):
+def generate_prescription_pdf(
+    prescription, patient=None, doctor=None, output_path=None
+):
     """
     Generate PDF prescription for a patient
-    
+
     Args:
         prescription: Prescription object
         patient: Patient object (optional)
         doctor: Admin object (doctor who created prescription, optional)
         output_path: Output path for PDF (optional)
-    
+
     Returns:
         str: Path to generated PDF file
     """
     # Create prescriptions directory under project root (so path works on any server)
-    prescriptions_dir = os.path.join(Config.PROJECT_ROOT, Config.PDF_REPORTS_PATH, "prescriptions")
+    prescriptions_dir = os.path.join(
+        Config.PROJECT_ROOT, Config.PDF_REPORTS_PATH, "prescriptions"
+    )
     os.makedirs(prescriptions_dir, exist_ok=True, mode=0o755)
-    
+
     # Generate output path (absolute for writing)
     if not output_path:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        safe_patient_id = prescription.patient_id.replace('/', '_')[:20]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_patient_id = prescription.patient_id.replace("/", "_")[:20]
         filename = f"prescription_{safe_patient_id}_{prescription.id}_{timestamp}.pdf"
         output_path = os.path.join(prescriptions_dir, filename)
     else:
         output_path = os.path.abspath(output_path)
-    
+
     # Return path relative to project root so DB works on any environment
     try:
         output_path_relative = os.path.relpath(output_path, Config.PROJECT_ROOT)
     except ValueError:
-        output_path_relative = os.path.join(Config.PDF_REPORTS_PATH, "prescriptions", os.path.basename(output_path))
-    
+        output_path_relative = os.path.join(
+            Config.PDF_REPORTS_PATH, "prescriptions", os.path.basename(output_path)
+        )
+
     # Fetch patient if not provided
     if not patient:
         from app.models import Patient
+
         patient = Patient.query.get(prescription.patient_id)
-    
+
     # Generate HTML content
     html_content = generate_prescription_html(prescription, patient, doctor)
-    
+
     # Generate PDF: WeasyPrint first, then ReportLab (styled), then minimal placeholder
     if WEASYPRINT_AVAILABLE:
         try:
             HTML(string=html_content).write_pdf(
-                output_path,
-                stylesheets=[CSS(string=get_prescription_css())]
+                output_path, stylesheets=[CSS(string=get_prescription_css())]
             )
             logger.info(f"Prescription PDF generated (WeasyPrint): {output_path}")
             return output_path_relative
@@ -353,7 +389,9 @@ def generate_prescription_pdf(prescription, patient=None, doctor=None, output_pa
             logger.error(f"WeasyPrint failed: {e}", exc_info=True)
     if REPORTLAB_AVAILABLE:
         try:
-            _generate_prescription_pdf_reportlab(output_path, prescription, patient, doctor)
+            _generate_prescription_pdf_reportlab(
+                output_path, prescription, patient, doctor
+            )
             logger.info(f"Prescription PDF generated (ReportLab): {output_path}")
             return output_path_relative
         except Exception as e:
@@ -362,7 +400,9 @@ def generate_prescription_pdf(prescription, patient=None, doctor=None, output_pa
     return output_path_relative
 
 
-def generate_patient_summary_pdf(patient, clinic=None, output_path=None, prescription=None):
+def generate_patient_summary_pdf(
+    patient, clinic=None, output_path=None, prescription=None
+):
     """
     Generate a PDF with patient details and clinic branding (name, logo, etc.).
 
@@ -424,7 +464,9 @@ def generate_patient_summary_pdf(patient, clinic=None, output_path=None, prescri
 
     if REPORTLAB_AVAILABLE:
         try:
-            _generate_patient_summary_pdf_reportlab(output_path, patient, clinic, prescription)
+            _generate_patient_summary_pdf_reportlab(
+                output_path, patient, clinic, prescription
+            )
             logger.info(f"Patient summary PDF generated (ReportLab): {output_path}")
             return output_path_relative
         except Exception as e:
@@ -442,13 +484,32 @@ def _generate_patient_summary_html(patient, clinic=None, prescription=None):
     """HTML content for patient summary PDF with clinic branding."""
     logo_html = ""
     if clinic and clinic.logo_path:
-        logo_path = (
-            clinic.logo_path
-            if os.path.isabs(clinic.logo_path)
-            else os.path.join(Config.PROJECT_ROOT, clinic.logo_path)
-        )
-        if os.path.exists(logo_path):
-            logo_html = f'<img src="{logo_path}" alt="Clinic Logo" style="height:80px;margin-bottom:10px;" />'
+        # Try multiple path combinations
+        logo_path_fs = None
+
+        # 1. Check if absolute path
+        if os.path.isabs(clinic.logo_path):
+            logo_path_fs = clinic.logo_path
+        # 2. Try with PROJECT_ROOT
+        elif os.path.exists(os.path.join(Config.PROJECT_ROOT, clinic.logo_path)):
+            logo_path_fs = os.path.join(Config.PROJECT_ROOT, clinic.logo_path)
+        # 3. Try current directory
+        elif os.path.exists(clinic.logo_path):
+            logo_path_fs = clinic.logo_path
+        # 4. Try relative to backend folder
+        elif os.path.exists(
+            os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                clinic.logo_path,
+            )
+        ):
+            logo_path_fs = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                clinic.logo_path,
+            )
+
+        if logo_path_fs and os.path.exists(logo_path_fs):
+            logo_html = f'<img src="{logo_path_fs}" alt="Clinic Logo" style="height:80px;margin-bottom:10px;" />'
 
     clinic_name = clinic.name if clinic else "Clinic"
     clinic_addr = clinic.address or ""
@@ -590,16 +651,14 @@ def _generate_patient_summary_html(patient, clinic=None, prescription=None):
             med = item.get("medicine", "")
             dos = item.get("dosage", "")
             dur = item.get("duration_days", "")
-            rows.append(
-                f"<tr><td>{med}</td><td>{dos}</td><td>{dur} days</td></tr>"
-            )
+            rows.append(f"<tr><td>{med}</td><td>{dos}</td><td>{dur} days</td></tr>")
         rows_html = "".join(rows)
         html += f"""
         <div class="section">
             <h2>Latest Prescription</h2>
             <table>
                 <tr><td>Prescription ID</td><td>{prescription.id}</td></tr>
-                <tr><td>Date</td><td>{prescription.created_at.strftime('%Y-%m-%d %H:%M:%S') if prescription.created_at else 'N/A'}</td></tr>
+                <tr><td>Date</td><td>{prescription.created_at.strftime("%Y-%m-%d %H:%M:%S") if prescription.created_at else "N/A"}</td></tr>
             </table>
             <table class="prescription-table">
                 <thead>
@@ -618,7 +677,7 @@ def _generate_patient_summary_html(patient, clinic=None, prescription=None):
 
     html += f"""
         <div class="footer">
-            <p>Patient summary generated on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}.</p>
+            <p>Patient summary generated on {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}.</p>
         </div>
     </body>
     </html>
@@ -626,7 +685,9 @@ def _generate_patient_summary_html(patient, clinic=None, prescription=None):
     return html
 
 
-def _generate_patient_summary_pdf_reportlab(output_path, patient, clinic=None, prescription=None):
+def _generate_patient_summary_pdf_reportlab(
+    output_path, patient, clinic=None, prescription=None
+):
     """Fallback patient summary PDF using ReportLab."""
     doc = SimpleDocTemplate(
         output_path,
@@ -743,7 +804,9 @@ def _generate_patient_summary_pdf_reportlab(output_path, patient, clinic=None, p
     doc.build(story)
 
 
-def _generate_patient_summary_placeholder(output_path, patient, clinic=None, prescription=None):
+def _generate_patient_summary_placeholder(
+    output_path, patient, clinic=None, prescription=None
+):
     """Minimal text-based PDF placeholder for patient summary."""
     lines = [
         "PATIENT SUMMARY",
@@ -801,22 +864,18 @@ def _generate_patient_summary_placeholder(output_path, patient, clinic=None, pre
     xref += f"{offsets[0]:010d} 65535 f \n"
     for off in offsets[1:]:
         xref += f"{off:010d} 00000 n \n"
-    trailer = (
-        f"trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n"
-    )
+    trailer = f"trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n"
     pdf = body + xref.encode() + trailer.encode()
     with open(output_path, "wb") as f:
         f.write(pdf)
 
-    logger.warning(
-        f"Placeholder patient summary (minimal PDF) created: {output_path}"
-    )
+    logger.warning(f"Placeholder patient summary (minimal PDF) created: {output_path}")
     return output_path
 
 
 def generate_prescription_html(prescription, patient=None, doctor=None):
     """Generate HTML content for prescription PDF (clinic-branded)."""
-    
+
     # Resolve clinic for logo/name/address/phone
     clinic = None
     try:
@@ -829,12 +888,31 @@ def generate_prescription_html(prescription, patient=None, doctor=None):
 
     logo_html = ""
     if clinic and clinic.logo_path:
-        logo_path_fs = (
-            clinic.logo_path
-            if os.path.isabs(clinic.logo_path)
-            else os.path.join(Config.PROJECT_ROOT, clinic.logo_path)
-        )
-        if os.path.exists(logo_path_fs):
+        # Try multiple path combinations
+        logo_path_fs = None
+
+        # 1. Check if absolute path
+        if os.path.isabs(clinic.logo_path):
+            logo_path_fs = clinic.logo_path
+        # 2. Try with PROJECT_ROOT
+        elif os.path.exists(os.path.join(Config.PROJECT_ROOT, clinic.logo_path)):
+            logo_path_fs = os.path.join(Config.PROJECT_ROOT, clinic.logo_path)
+        # 3. Try current directory
+        elif os.path.exists(clinic.logo_path):
+            logo_path_fs = clinic.logo_path
+        # 4. Try relative to backend folder
+        elif os.path.exists(
+            os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                clinic.logo_path,
+            )
+        ):
+            logo_path_fs = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                clinic.logo_path,
+            )
+
+        if logo_path_fs and os.path.exists(logo_path_fs):
             # Use file:// URL so WeasyPrint/HTML renderer can load the local image.
             logo_src = f"file://{logo_path_fs}"
             logo_html = f'<img src="{logo_src}" alt="Clinic Logo" style="height:60px;margin-right:15px;" />'
@@ -846,31 +924,44 @@ def generate_prescription_html(prescription, patient=None, doctor=None):
 
     patient_name = f"{patient.first_name} {patient.last_name}" if patient else "Unknown"
     patient_id = patient.id if patient else prescription.patient_id
-    patient_dob = patient.birth_date.strftime('%Y-%m-%d') if patient and patient.birth_date else "N/A"
+    patient_dob = (
+        patient.birth_date.strftime("%Y-%m-%d")
+        if patient and patient.birth_date
+        else "N/A"
+    )
     patient_gender = patient.gender if patient else "N/A"
     patient_age = ""
     if patient and patient.birth_date:
         today = datetime.now().date()
-        age = today.year - patient.birth_date.year - ((today.month, today.day) < (patient.birth_date.month, patient.birth_date.day))
+        age = (
+            today.year
+            - patient.birth_date.year
+            - (
+                (today.month, today.day)
+                < (patient.birth_date.month, patient.birth_date.day)
+            )
+        )
         patient_age = f"{age} years"
-    
-    doctor_name = f"Dr. {doctor.first_name} {doctor.last_name}" if doctor else "Dr. Unknown"
+
+    doctor_name = (
+        f"Dr. {doctor.first_name} {doctor.last_name}" if doctor else "Dr. Unknown"
+    )
     department = getattr(doctor, "qualifications", None) or "General"
 
     # Build table rows for all medicines in this prescription
     rows_html = ""
     for item in prescription.items:
-        med = item.get('medicine', '')
-        dos = item.get('dosage', '')
-        dur = item.get('duration_days', '')
-        note = item.get('notes', '')
+        med = item.get("medicine", "")
+        dos = item.get("dosage", "")
+        dur = item.get("duration_days", "")
+        note = item.get("notes", "")
         rows_html += f"""
                     <tr>
                         <td>{med}</td>
                         <td>
                             <div class="dosage-detail">
                                 <div class="dosage-line">{dos}</div>
-                                {f'<div class="dosage-notes">{note}</div>' if note else ''}
+                                {f'<div class="dosage-notes">{note}</div>' if note else ""}
                             </div>
                         </td>
                         <td>{dur} days</td>
@@ -896,7 +987,7 @@ def generate_prescription_html(prescription, patient=None, doctor=None):
             </div>
             <div class="prescription-meta">
                 <p><strong>Prescription ID:</strong> {prescription.id}</p>
-                <p><strong>Date:</strong> {datetime.now().strftime('%d/%m/%Y')}</p>
+                <p><strong>Date:</strong> {datetime.now().strftime("%d/%m/%Y")}</p>
             </div>
         </div>
         
@@ -906,7 +997,7 @@ def generate_prescription_html(prescription, patient=None, doctor=None):
                     <td>
                         <p><strong>Patient Name:</strong> {patient_name}</p>
                         <p><strong>Patient ID:</strong> {patient_id}</p>
-                        <p><strong>Age / Gender:</strong> {patient_age or 'N/A'} / {patient_gender}</p>
+                        <p><strong>Age / Gender:</strong> {patient_age or "N/A"} / {patient_gender}</p>
                     </td>
                     <td>
                         <p><strong>Doctor:</strong> {doctor_name}</p>
@@ -945,7 +1036,7 @@ def generate_prescription_html(prescription, patient=None, doctor=None):
     </body>
     </html>
     """
-    
+
     return html
 
 
@@ -1112,34 +1203,40 @@ def get_prescription_css():
 
 
 def _pdf_escape(s):
-    s = str(s).replace('\\', '\\\\').replace('(', '\\(').replace(')', '\\)')
+    s = str(s).replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
     return s[:80]
 
 
-def _generate_prescription_pdf_reportlab(output_path, prescription, patient=None, doctor=None):
+def _generate_prescription_pdf_reportlab(
+    output_path, prescription, patient=None, doctor=None
+):
     """Styled prescription PDF using ReportLab (same look as WeasyPrint: blue header, tables, signature)."""
     doc = SimpleDocTemplate(
-        output_path, pagesize=A4,
-        leftMargin=2*cm, rightMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm
+        output_path,
+        pagesize=A4,
+        leftMargin=2 * cm,
+        rightMargin=2 * cm,
+        topMargin=2 * cm,
+        bottomMargin=2 * cm,
     )
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle(
-        name='PrescriptionTitle',
-        parent=styles['Heading1'],
+        name="PrescriptionTitle",
+        parent=styles["Heading1"],
         fontSize=24,
-        textColor=colors.HexColor('#0066cc'),
+        textColor=colors.HexColor("#0066cc"),
         spaceAfter=6,
         alignment=1,
     )
     heading_style = ParagraphStyle(
-        name='SectionHeading',
-        parent=styles['Heading2'],
+        name="SectionHeading",
+        parent=styles["Heading2"],
         fontSize=14,
-        textColor=colors.HexColor('#0066cc'),
+        textColor=colors.HexColor("#0066cc"),
         spaceAfter=8,
         borderPadding=(0, 0, 2, 0),
     )
-    normal = styles['Normal']
+    normal = styles["Normal"]
     story = []
 
     # Header
@@ -1150,12 +1247,23 @@ def _generate_prescription_pdf_reportlab(output_path, prescription, patient=None
     # Patient info table
     patient_name = f"{patient.first_name} {patient.last_name}" if patient else "Unknown"
     patient_id = patient.id if patient else prescription.patient_id
-    patient_dob = patient.birth_date.strftime('%Y-%m-%d') if patient and patient.birth_date else "N/A"
+    patient_dob = (
+        patient.birth_date.strftime("%Y-%m-%d")
+        if patient and patient.birth_date
+        else "N/A"
+    )
     patient_gender = patient.gender if patient else "N/A"
     patient_age = ""
     if patient and patient.birth_date:
         today = datetime.now().date()
-        age = today.year - patient.birth_date.year - ((today.month, today.day) < (patient.birth_date.month, patient.birth_date.day))
+        age = (
+            today.year
+            - patient.birth_date.year
+            - (
+                (today.month, today.day)
+                < (patient.birth_date.month, patient.birth_date.day)
+            )
+        )
         patient_age = f"{age} years"
     story.append(Paragraph("Patient Information", heading_style))
     pt_data = [
@@ -1165,15 +1273,19 @@ def _generate_prescription_pdf_reportlab(output_path, prescription, patient=None
         ["Age:", patient_age],
         ["Gender:", patient_gender],
     ]
-    pt = Table(pt_data, colWidths=[5*cm, 10*cm])
-    pt.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f5f5f5')),
-        ('TEXTCOLOR', (0, 0), (-1, -1), colors.black),
-        ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
+    pt = Table(pt_data, colWidths=[5 * cm, 10 * cm])
+    pt.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (0, -1), colors.HexColor("#f5f5f5")),
+                ("TEXTCOLOR", (0, 0), (-1, -1), colors.black),
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ]
+        )
+    )
     story.append(pt)
     story.append(Spacer(1, 20))
 
@@ -1181,39 +1293,59 @@ def _generate_prescription_pdf_reportlab(output_path, prescription, patient=None
     story.append(Paragraph("Prescription Details", heading_style))
     presc_data = [["Medicine", "Dosage", "Duration"]]
     for item in prescription.items:
-        med = item.get('medicine', '')
-        dos = item.get('dosage', '')
-        note = item.get('notes', '')
+        med = item.get("medicine", "")
+        dos = item.get("dosage", "")
+        note = item.get("notes", "")
         if note:
             dos = f"{dos}\n{note}"
         presc_data.append([med, dos, f"{item.get('duration_days', '')} days"])
-    pt2 = Table(presc_data, colWidths=[5*cm, 7*cm, 3*cm])
-    pt2.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0066cc')),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, -1), 10),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-    ]))
+    pt2 = Table(presc_data, colWidths=[5 * cm, 7 * cm, 3 * cm])
+    pt2.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0066cc")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
     story.append(pt2)
     story.append(Spacer(1, 40))
 
     # Signature
-    doctor_name = f"Dr. {doctor.first_name} {doctor.last_name}" if doctor else "Dr. Unknown"
+    doctor_name = (
+        f"Dr. {doctor.first_name} {doctor.last_name}" if doctor else "Dr. Unknown"
+    )
     story.append(Paragraph("<b>Prescribed by:</b>", normal))
-    story.append(Paragraph(f'<font color="#0066cc" size="14"><b>{doctor_name}</b></font>', normal))
+    story.append(
+        Paragraph(
+            f'<font color="#0066cc" size="14"><b>{doctor_name}</b></font>', normal
+        )
+    )
     story.append(Spacer(1, 30))
     story.append(Paragraph("_" * 30, normal))
     story.append(Spacer(1, 30))
-    story.append(Paragraph(
-        "<i>This is a computer-generated prescription. Please follow the dosage instructions carefully.</i>",
-        ParagraphStyle(name='Footer', parent=normal, fontSize=9, textColor=colors.grey, alignment=1)
-    ))
+    story.append(
+        Paragraph(
+            "<i>This is a computer-generated prescription. Please follow the dosage instructions carefully.</i>",
+            ParagraphStyle(
+                name="Footer",
+                parent=normal,
+                fontSize=9,
+                textColor=colors.grey,
+                alignment=1,
+            ),
+        )
+    )
     doc.build(story)
 
 
-def generate_placeholder_prescription(output_path, prescription, patient=None, doctor=None):
+def generate_placeholder_prescription(
+    output_path, prescription, patient=None, doctor=None
+):
     """Minimal valid PDF when WeasyPrint and ReportLab both unavailable."""
     lines = [
         "PRESCRIPTION",
@@ -1221,21 +1353,23 @@ def generate_placeholder_prescription(output_path, prescription, patient=None, d
         "",
     ]
     if patient:
-        lines.extend([
-            "Patient Information:",
-            f"  ID: {patient.id}",
-            f"  Name: {patient.first_name} {patient.last_name}",
-            f"  DOB: {patient.birth_date}",
-            f"  Gender: {patient.gender}",
-            "",
-        ])
+        lines.extend(
+            [
+                "Patient Information:",
+                f"  ID: {patient.id}",
+                f"  Name: {patient.first_name} {patient.last_name}",
+                f"  DOB: {patient.birth_date}",
+                f"  Gender: {patient.gender}",
+                "",
+            ]
+        )
     lines.append("Prescription Details:")
     for idx, item in enumerate(prescription.items, start=1):
         lines.append(f"  Item {idx}:")
         lines.append(f"    Medicine: {item.get('medicine', '')}")
         lines.append(f"    Dosage: {item.get('dosage', '')}")
         lines.append(f"    Duration: {item.get('duration_days', '')} days")
-        note = item.get('notes') or ''
+        note = item.get("notes") or ""
         if note:
             lines.append(f"    Notes: {note}")
         lines.append("")
@@ -1251,7 +1385,7 @@ def generate_placeholder_prescription(output_path, prescription, patient=None, d
         content_parts.append(f"BT /F1 11 Tf 50 {y} Td ({_pdf_escape(line)}) Tj ET")
         y -= 14
     content = "\n".join(content_parts)
-    stream_body = content.encode('utf-8')
+    stream_body = content.encode("utf-8")
     stream_len = len(stream_body)
 
     parts = []
@@ -1261,7 +1395,9 @@ def generate_placeholder_prescription(output_path, prescription, patient=None, d
     # obj 2: Pages
     parts.append(b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n")
     # obj 3: Page
-    parts.append(b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>\nendobj\n")
+    parts.append(
+        b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Helvetica >> >> >> >>\nendobj\n"
+    )
     # obj 4: Content stream
     parts.append(f"4 0 obj\n<< /Length {stream_len} >>\nstream\n".encode())
     parts.append(stream_body)
@@ -1279,7 +1415,7 @@ def generate_placeholder_prescription(output_path, prescription, patient=None, d
         xref += f"{off:010d} 00000 n \n"
     trailer = f"trailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n"
     pdf = body + xref.encode() + trailer.encode()
-    with open(output_path, 'wb') as f:
+    with open(output_path, "wb") as f:
         f.write(pdf)
 
     logger.warning(f"Placeholder prescription (minimal PDF) created: {output_path}")
