@@ -157,6 +157,10 @@ def get_clinic(clinic_id):
 @jwt_required()
 def update_clinic(clinic_id):
     """Update clinic details. Access: super admin or doctor of the clinic."""
+    import os
+    from werkzeug.utils import secure_filename
+    from flask import current_app
+
     current = _current_admin()
 
     # Super admin can update any clinic, doctor can only update their own clinic
@@ -174,46 +178,134 @@ def update_clinic(clinic_id):
     if not clinic:
         return jsonify({"success": False, "error": "Clinic not found"}), 404
 
-    data = request.get_json() or {}
+    # Check if multipart form data (logo upload)
+    if request.content_type and "multipart/form-data" in request.content_type:
+        # Handle multipart form data
+        hospital_name = request.form.get("hospital_name")
+        clinic_address = request.form.get("clinic_address")
+        contact_number = request.form.get("contact_number")
+        email = request.form.get("email")
+        header_text = request.form.get("header_text")
+        footer_text = request.form.get("footer_text")
+        license_name = request.form.get("license_name")
+        is_active = request.form.get("is_active")
+        remove_logo = request.form.get("remove_logo", "").lower() == "true"
+        logo_file = request.files.get("logo")
 
-    # Super admin can update all fields, doctors can only update limited fields
-    if is_doctor:
-        # Doctor can update: name, address, phone, email, header_text, footer_text
-        if "hospital_name" in data:
-            clinic.name = data["hospital_name"]
-        if "clinic_address" in data:
-            clinic.address = data["clinic_address"]
-        if "contact_number" in data:
-            clinic.phone = data["contact_number"]
-        if "email" in data:
-            clinic.email = data["email"]
-    else:
-        # Super admin can update all fields
-        if "hospital_name" in data:
-            clinic.name = data["hospital_name"]
-        if "license_name" in data:
-            existing = Clinic.query.filter(
-                Clinic.license_key == data["license_name"], Clinic.id != clinic_id
-            ).first()
-            if existing:
+        # Super admin can update all fields, doctors can only update limited fields
+        if is_doctor:
+            if hospital_name:
+                clinic.name = hospital_name
+            if clinic_address is not None:
+                clinic.address = clinic_address
+            if contact_number is not None:
+                clinic.phone = contact_number
+            if email is not None:
+                clinic.email = email
+        else:
+            if hospital_name:
+                clinic.name = hospital_name
+            if license_name:
+                existing = Clinic.query.filter(
+                    Clinic.license_key == license_name, Clinic.id != clinic_id
+                ).first()
+                if existing:
+                    return jsonify(
+                        {"success": False, "error": "License name already exists"}
+                    ), 400
+                clinic.license_key = license_name
+            if clinic_address is not None:
+                clinic.address = clinic_address
+            if contact_number is not None:
+                clinic.phone = contact_number
+            if email is not None:
+                clinic.email = email
+            if is_active is not None:
+                clinic.is_active = is_active.lower() == "true"
+
+        # Common fields
+        if header_text is not None:
+            clinic.header_text = header_text
+        if footer_text is not None:
+            clinic.footer_text = footer_text
+
+        # Handle logo
+        if remove_logo and clinic.logo_path:
+            old_path = os.path.join(
+                current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
+            )
+            if os.path.exists(old_path):
+                os.remove(old_path)
+            clinic.logo_path = None
+
+        if logo_file and logo_file.filename:
+            allowed_extensions = {".jpg", ".jpeg", ".png", ".svg", ".webp"}
+            ext = os.path.splitext(secure_filename(logo_file.filename))[1].lower()
+            if ext not in allowed_extensions:
                 return jsonify(
-                    {"success": False, "error": "License name already exists"}
+                    {
+                        "success": False,
+                        "error": f"Invalid file type. Allowed: {', '.join(allowed_extensions)}",
+                    }
                 ), 400
-            clinic.license_key = data["license_name"]
-        if "clinic_address" in data:
-            clinic.address = data["clinic_address"]
-        if "contact_number" in data:
-            clinic.phone = data["contact_number"]
-        if "email" in data:
-            clinic.email = data["email"]
-        if "is_active" in data:
-            clinic.is_active = bool(data["is_active"])
 
-    # Common fields for both
-    if "header_text" in data:
-        clinic.header_text = data["header_text"]
-    if "footer_text" in data:
-        clinic.footer_text = data["footer_text"]
+            upload_folder = os.path.join(
+                current_app.config.get("PROJECT_ROOT", ""), "clinic_logos"
+            )
+            os.makedirs(upload_folder, exist_ok=True)
+
+            # Remove old logo if exists
+            if clinic.logo_path:
+                old_path = os.path.join(
+                    current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
+                )
+                if os.path.exists(old_path):
+                    os.remove(old_path)
+
+            filename = f"clinic_{clinic.id}_logo{ext}"
+            filepath = os.path.join(upload_folder, filename)
+            logo_file.save(filepath)
+            clinic.logo_path = os.path.join("clinic_logos", filename)
+    else:
+        # Handle JSON
+        data = request.get_json() or {}
+
+        # Super admin can update all fields, doctors can only update limited fields
+        if is_doctor:
+            if "hospital_name" in data:
+                clinic.name = data["hospital_name"]
+            if "clinic_address" in data:
+                clinic.address = data["clinic_address"]
+            if "contact_number" in data:
+                clinic.phone = data["contact_number"]
+            if "email" in data:
+                clinic.email = data["email"]
+        else:
+            if "hospital_name" in data:
+                clinic.name = data["hospital_name"]
+            if "license_name" in data:
+                existing = Clinic.query.filter(
+                    Clinic.license_key == data["license_name"], Clinic.id != clinic_id
+                ).first()
+                if existing:
+                    return jsonify(
+                        {"success": False, "error": "License name already exists"}
+                    ), 400
+                clinic.license_key = data["license_name"]
+            if "clinic_address" in data:
+                clinic.address = data["clinic_address"]
+            if "contact_number" in data:
+                clinic.phone = data["contact_number"]
+            if "email" in data:
+                clinic.email = data["email"]
+            if "is_active" in data:
+                clinic.is_active = bool(data["is_active"])
+
+        # Common fields for both
+        if "header_text" in data:
+            clinic.header_text = data["header_text"]
+        if "footer_text" in data:
+            clinic.footer_text = data["footer_text"]
 
     try:
         db.session.commit()
@@ -222,7 +314,7 @@ def update_clinic(clinic_id):
             "update",
             user_id=current.id,
             entity_id=str(clinic_id),
-            details=data,
+            details={},
         )
 
         # Get doctor info
