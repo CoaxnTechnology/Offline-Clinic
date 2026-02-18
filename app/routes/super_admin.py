@@ -8,6 +8,16 @@ from flask import Blueprint, jsonify, request
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 from app.extensions import db
+
+
+def _get_base_url():
+    """Get base URL for logo/asset URLs."""
+    if Config.PUBLIC_BASE_URL:
+        return Config.PUBLIC_BASE_URL
+    # Fallback: construct from request
+    return request.host_url.rstrip("/")
+
+
 from app.models import Admin, Clinic
 from app.utils.audit import log_audit
 from app.services.email_service import send_welcome_email
@@ -66,10 +76,11 @@ def list_clinics():
                 "is_active": d.is_active,
             }
 
-        # Build logo URL
+        # Build logo URL with full base URL
         logo_url = None
         if c.logo_path:
-            logo_url = f"/api/super-admin/clinics/{c.id}/logo"
+            base_url = _get_base_url()
+            logo_url = f"{base_url}/api/super-admin/clinics/{c.id}/logo"
 
         data.append(
             {
@@ -123,10 +134,11 @@ def get_clinic(clinic_id):
             "created_at": d.created_at.isoformat() if d.created_at else None,
         }
 
-    # Build logo URL
+    # Build logo URL with full base URL
     logo_url = None
     if clinic.logo_path:
-        logo_url = f"/api/super-admin/clinics/{clinic.id}/logo"
+        base_url = _get_base_url()
+        logo_url = f"{base_url}/api/super-admin/clinics/{clinic.id}/logo"
 
     return jsonify(
         {
@@ -391,10 +403,11 @@ def update_clinic(clinic_id):
                 "is_active": d.is_active,
             }
 
-        # Build logo URL
+        # Build logo URL with full base URL
         logo_url = None
         if clinic.logo_path:
-            logo_url = f"/api/super-admin/clinics/{clinic.id}/logo"
+            base_url = Config.PUBLIC_BASE_URL or ""
+            logo_url = f"{base_url}/api/super-admin/clinics/{clinic.id}/logo"
 
         return jsonify(
             {

@@ -347,7 +347,8 @@ def get_clinic_by_id(clinic_id):
 
     logo_url = None
     if clinic.logo_path:
-        logo_url = f"/api/clinics/{clinic.id}/logo"
+        base_url = Config.PUBLIC_BASE_URL or request.host_url.rstrip("/")
+        logo_url = f"{base_url}/api/clinics/{clinic.id}/logo"
 
     return jsonify(
         {
@@ -576,7 +577,7 @@ def update_clinic_by_id(clinic_id):
                     "dicom_ae_title": clinic.dicom_ae_title,
                     "is_active": clinic.is_active,
                     "logo_path": clinic.logo_path,
-                    "logo_url": f"/api/clinics/{clinic.id}/logo"
+                    "logo_url": f"{Config.PUBLIC_BASE_URL or request.host_url.rstrip('/')}/api/clinics/{clinic.id}/logo"
                     if clinic.logo_path
                     else None,
                     "header_text": clinic.header_text,
@@ -626,10 +627,11 @@ def get_current_clinic():
             "is_active": d.is_active,
         }
 
-    # Build logo URL
+    # Build logo URL with full base URL
     logo_url = None
     if clinic.logo_path:
-        logo_url = f"/api/clinic/logo"
+        base_url = Config.PUBLIC_BASE_URL or ""
+        logo_url = f"{base_url}/api/clinic/logo"
 
     return jsonify(
         {
@@ -796,7 +798,9 @@ def update_current_clinic():
                     "dicom_ae_title": clinic.dicom_ae_title,
                     "is_active": clinic.is_active,
                     "logo_path": clinic.logo_path,
-                    "logo_url": f"/api/clinic/logo" if clinic.logo_path else None,
+                    "logo_url": f"{Config.PUBLIC_BASE_URL or request.host_url.rstrip('/')}/api/clinic/logo"
+                    if clinic.logo_path
+                    else None,
                     "header_text": clinic.header_text,
                     "footer_text": clinic.footer_text,
                 },
