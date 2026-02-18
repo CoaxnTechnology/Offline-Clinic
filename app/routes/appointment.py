@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models import Appointment, Patient, Admin, DicomImage, Prescription
 from app.extensions import db
@@ -225,21 +225,28 @@ def list_appointments():
             }
         )
 
-    return jsonify(
-        {
-            "success": True,
-            "data": result,
-            "pagination": {
-                "page": page,
-                "limit": limit,
-                "total": total,
-                "pages": appointments.pages,
-                "has_next": appointments.has_next,
-                "has_prev": appointments.has_prev,
-            },
-            "date": filter_date_obj.isoformat() if filter_date_obj else None,
-        }
-    ), 200
+    response = make_response(
+        jsonify(
+            {
+                "success": True,
+                "data": result,
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total": total,
+                    "pages": appointments.pages,
+                    "has_next": appointments.has_next,
+                    "has_prev": appointments.has_prev,
+                },
+                "date": filter_date_obj.isoformat() if filter_date_obj else None,
+            }
+        ),
+        200,
+    )
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @appointment_bp.route("/with-doctor", methods=["GET"])
@@ -344,21 +351,28 @@ def list_with_doctor_appointments_for_consultant():
             }
         )
 
-    return jsonify(
-        {
-            "success": True,
-            "data": result,
-            "pagination": {
-                "page": page,
-                "limit": limit,
-                "total": total,
-                "pages": appointments.pages,
-                "has_next": appointments.has_next,
-                "has_prev": appointments.has_prev,
-            },
-            "date": filter_date_obj.isoformat() if filter_date_obj else None,
-        }
-    ), 200
+    response = make_response(
+        jsonify(
+            {
+                "success": True,
+                "data": result,
+                "pagination": {
+                    "page": page,
+                    "limit": limit,
+                    "total": total,
+                    "pages": appointments.pages,
+                    "has_next": appointments.has_next,
+                    "has_prev": appointments.has_prev,
+                },
+                "date": filter_date_obj.isoformat() if filter_date_obj else None,
+            }
+        ),
+        200,
+    )
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
 
 
 @appointment_bp.route("/<int:appointment_id>", methods=["GET"])
