@@ -502,8 +502,12 @@ def update_clinic_by_id(clinic_id):
         if "footer_text" in data:
             clinic.footer_text = data["footer_text"]
 
+        # Handle logo_path (direct path like "clinic_logos/test1.jpg")
+        if "logo_path" in data and data["logo_path"]:
+            clinic.logo_path = data["logo_path"]
+
         # Handle logo (base64 in JSON)
-        if "logo" in data and data["logo"]:
+        elif "logo" in data and data["logo"]:
             import base64
 
             try:
