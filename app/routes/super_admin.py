@@ -323,54 +323,61 @@ def update_clinic(clinic_id):
         if "logo_path" in data and data["logo_path"]:
             clinic.logo_path = data["logo_path"]
 
-        # Handle logo (base64 in JSON)
+        # Handle logo - can be base64 or a file path
         elif "logo" in data and data["logo"]:
             import base64
 
-            try:
-                # Remove data:image/xxx;base64, prefix if present
-                logo_data = data["logo"]
-                if "," in logo_data:
-                    header, logo_data = logo_data.split(",", 1)
-                    # Extract extension from header (e.g., "data:image/png;base64")
-                    ext = ".png"
-                    if "jpeg" in header or "jpg" in header:
-                        ext = ".jpg"
-                    elif "svg" in header:
-                        ext = ".svg"
-                    elif "webp" in header:
-                        ext = ".webp"
-                else:
-                    # Assume PNG if no header
-                    ext = ".png"
+            logo_data = data["logo"]
 
-                # Decode base64
-                image_bytes = base64.b64decode(logo_data)
+            # Check if it's a file path (contains / or \)
+            if "/" in logo_data or "\\" in logo_data:
+                # It's a path - just use it directly
+                clinic.logo_path = logo_data
+            else:
+                # It's base64 - decode and save
+                try:
+                    # Remove data:image/xxx;base64, prefix if present
+                    if "," in logo_data:
+                        header, logo_data = logo_data.split(",", 1)
+                        # Extract extension from header (e.g., "data:image/png;base64")
+                        ext = ".png"
+                        if "jpeg" in header or "jpg" in header:
+                            ext = ".jpg"
+                        elif "svg" in header:
+                            ext = ".svg"
+                        elif "webp" in header:
+                            ext = ".webp"
+                    else:
+                        # Assume PNG if no header
+                        ext = ".png"
 
-                upload_folder = os.path.join(
-                    current_app.config.get("PROJECT_ROOT", ""), "clinic_logos"
-                )
-                os.makedirs(upload_folder, exist_ok=True)
+                    # Decode base64
+                    image_bytes = base64.b64decode(logo_data)
 
-                # Remove old logo if exists
-                if clinic.logo_path:
-                    old_path = os.path.join(
-                        current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
+                    upload_folder = os.path.join(
+                        current_app.config.get("PROJECT_ROOT", ""), "clinic_logos"
                     )
-                    if os.path.exists(old_path):
-                        os.remove(old_path)
+                    os.makedirs(upload_folder, exist_ok=True)
 
-                filename = f"clinic_{clinic.id}_logo{ext}"
-                filepath = os.path.join(upload_folder, filename)
+                    # Remove old logo if exists
+                    if clinic.logo_path:
+                        old_path = os.path.join(
+                            current_app.config.get("PROJECT_ROOT", ""), clinic.logo_path
+                        )
+                        if os.path.exists(old_path):
+                            os.remove(old_path)
 
-                with open(filepath, "wb") as f:
-                    f.write(image_bytes)
+                    filename = f"clinic_{clinic.id}_logo{ext}"
+                    filepath = os.path.join(upload_folder, filename)
 
-                clinic.logo_path = os.path.join("clinic_logos", filename)
-            except Exception as e:
-                return jsonify(
-                    {"success": False, "error": f"Invalid logo data: {str(e)}"}
-                ), 400
+                    with open(filepath, "wb") as f:
+                        f.write(image_bytes)
+
+                    clinic.logo_path = os.path.join("clinic_logos", filename)
+                except Exception as e:
+                    return jsonify(
+                        {"success": False, "error": f"Invalid logo data: {str(e)}"}
+                    ), 400
 
         # Handle remove_logo flag
         if data.get("remove_logo") == True or data.get("remove_logo") == "true":
