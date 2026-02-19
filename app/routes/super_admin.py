@@ -84,12 +84,10 @@ def list_clinics():
 
         data.append(
             {
-                "id": c.id,
-                "hospital_name": c.name,
+                "clinic_id": c.id,
                 "clinic_address": c.address,
                 "contact_number": c.phone,
                 "email": c.email,
-                "license_name": c.license_key,
                 "ae_title": c.dicom_ae_title,
                 "is_active": c.is_active,
                 "logo_path": c.logo_path,
@@ -146,12 +144,10 @@ def get_clinic(clinic_id):
         {
             "success": True,
             "data": {
-                "id": clinic.id,
-                "hospital_name": clinic.name,
+                "clinic_id": clinic.id,
                 "clinic_address": clinic.address,
                 "contact_number": clinic.phone,
                 "email": clinic.email,
-                "license_name": clinic.license_key,
                 "ae_title": clinic.dicom_ae_title,
                 "is_active": clinic.is_active,
                 "logo_path": clinic.logo_path,
@@ -347,9 +343,7 @@ def update_clinic(clinic_id):
             {
                 "success": True,
                 "data": {
-                    "id": clinic.id,
-                    "hospital_name": clinic.name,
-                    "license_name": clinic.license_key,
+                    "clinic_id": clinic.id,
                     "clinic_address": clinic.address,
                     "contact_number": clinic.phone,
                     "email": clinic.email,
@@ -584,9 +578,7 @@ def create_clinic_with_doctor():
                     "success": True,
                     "data": {
                         "clinic": {
-                            "id": clinic.id,
-                            "hospital_name": clinic.name,
-                            "license_name": clinic.license_key,
+                            "clinic_id": clinic.id,
                             "clinic_address": clinic.address,
                             "contact_number": clinic.phone,
                             "email": clinic.email,
