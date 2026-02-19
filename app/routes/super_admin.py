@@ -436,13 +436,15 @@ def create_clinic_with_doctor():
 
     Body JSON:
     {
-      "hospital_name": "Sunshine Hospital",    # required
-      "license_name": "SUN-0001",             # required, unique
-      "doctor_name": "Dr. Sunshine",           # required
-      "contact_number": "+91 99999 99999",     # required
-      "email": "doctor@sunshine.com",          # required, unique
-      "clinic_address": "123 Medical Rd"       # optional
+      "doctor_name": "Dr. Ahmed",           # required
+      "contact_number": "+92 300 1234567",    # required
+      "email": "doctor@clinic.com",          # required, unique
+      "clinic_address": "123 Main St"       # optional
     }
+
+    Optional fields (auto-generated if not provided):
+      "hospital_name": "My Clinic"          # defaults to "Clinic"
+      "license_name": "ABC-1234"             # defaults to auto-generated
 
     AE Title is auto-generated.
     Returns clinic + doctor info and a set-password link.
@@ -455,40 +457,31 @@ def create_clinic_with_doctor():
     data = request.get_json() or {}
 
     # Validate required fields
-    hospital_name = (data.get("hospital_name") or "").strip()
-    license_name = (data.get("license_name") or "").strip()
     doctor_name = (data.get("doctor_name") or "").strip()
     contact_number = (data.get("contact_number") or "").strip()
     email = (data.get("email") or "").strip()
     clinic_address = (data.get("clinic_address") or "").strip() or None
 
-    if (
-        not hospital_name
-        or not license_name
-        or not doctor_name
-        or not contact_number
-        or not email
-    ):
+    # Optional: auto-generate if not provided
+    hospital_name = (data.get("hospital_name") or "").strip() or f"Clinic"
+    license_name = (data.get("license_name") or "").strip() or None
+
+    if not doctor_name or not contact_number or not email:
         return (
             jsonify(
                 {
                     "success": False,
-                    "error": "hospital_name, license_name, doctor_name, contact_number and email are required",
+                    "error": "doctor_name, contact_number and email are required",
                 }
             ),
             400,
         )
 
-    if Clinic.query.filter_by(license_key=license_name).first():
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "error": "Clinic with this license_name already exists",
-                }
-            ),
-            400,
-        )
+    # Auto-generate license_name if not provided
+    if not license_name:
+        import secrets
+
+        license_name = f"CLINIC-{secrets.token_hex(4).upper()}"
 
     # Auto-generate username from doctor_name (e.g. "Dr. Sunshine" -> "dr.sunshine")
     username = doctor_name.lower().replace(" ", "").replace(".", "")
