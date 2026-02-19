@@ -465,6 +465,7 @@ Both: Connect to same PostgreSQL database
    - Static documentation (if needed)
    - Email services
 
+
 3. **Point domain to VPS:**
    - In Bluehost DNS settings
    - Add A record: `@` → VPS IP address
