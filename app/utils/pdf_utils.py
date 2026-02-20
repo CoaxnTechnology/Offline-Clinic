@@ -131,8 +131,8 @@ def generate_report_html(
     patient_name = f"{patient.first_name} {patient.last_name}" if patient else "Unknown"
     patient_id = patient.id if patient else "N/A"
     patient_dob = (
-        patient.date_of_birth.strftime("%Y-%m-%d")
-        if patient and patient.date_of_birth
+        patient.birth_date.strftime("%Y-%m-%d")
+        if patient and patient.birth_date
         else "N/A"
     )
     patient_gender = patient.gender if patient else "N/A"
@@ -315,7 +315,7 @@ def generate_placeholder_report(
             f.write("Patient Information:\n")
             f.write(f"  ID: {patient.id}\n")
             f.write(f"  Name: {patient.first_name} {patient.last_name}\n")
-            f.write(f"  DOB: {patient.date_of_birth}\n")
+            f.write(f"  DOB: {patient.birth_date}\n")
             f.write(f"  Gender: {patient.gender}\n\n")
 
         if images:
