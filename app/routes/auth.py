@@ -45,6 +45,27 @@ def login():
     if not admin.is_active:
         return jsonify({"success": False, "error": "Account is deactivated"}), 403
 
+    # ── Portal restriction ────────────────────────────────────────────────
+    # Super admin must login from admin panel; doctor/receptionist from clinic portal.
+    from app.config import Config
+
+    origin = request.headers.get("Origin", "") or request.headers.get("Referer", "")
+    origin = origin.rstrip("/")
+
+    super_admin_url = (Config.SUPER_ADMIN_BASE_URL or "").rstrip("/")
+    clinic_url = (Config.FRONTEND_BASE_URL or "").rstrip("/")
+
+    # Only enforce when both URLs are configured and different (i.e. production)
+    if super_admin_url and clinic_url and super_admin_url != clinic_url:
+        if admin.is_super_admin and origin and super_admin_url not in origin:
+            return jsonify(
+                {"success": False, "error": "Super admin must login from the admin panel"}
+            ), 403
+        if not admin.is_super_admin and origin and clinic_url not in origin:
+            return jsonify(
+                {"success": False, "error": "Please login from the clinic portal"}
+            ), 403
+
     # Update login tracking
     admin.last_login = datetime.utcnow()
     admin.login_count = (admin.login_count or 0) + 1
