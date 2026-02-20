@@ -306,6 +306,10 @@ def create_app(config_name=None):
             db.session.rollback()
             logger.warning(f"Schema auto-migration skipped: {e}")
 
+        # Seed default data
+        from app.seeds import seed_report_templates
+        seed_report_templates()
+
         # Serve report PDFs at /reports/... so pdf_path URLs work directly
         @app.route("/reports/<path:filename>")
         def serve_report(filename):
