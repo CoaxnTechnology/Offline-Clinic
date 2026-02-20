@@ -29,7 +29,7 @@ def login():
 
     if not username or not password:
         return jsonify(
-            {"success": False, "error": "Username/email and password required"}
+            {"success": False, "error": "Username/email and password required", "message": "Username/email and password required"}
         ), 400
 
     # Try username first, then email
@@ -39,11 +39,11 @@ def login():
 
     if not admin or not admin.check_password(password):
         return jsonify(
-            {"success": False, "error": "Invalid username/email or password"}
+            {"success": False, "error": "Invalid username/email or password", "message": "Invalid username/email or password"}
         ), 401
 
     if not admin.is_active:
-        return jsonify({"success": False, "error": "Account is deactivated"}), 403
+        return jsonify({"success": False, "error": "Account is deactivated", "message": "Account is deactivated"}), 403
 
     # ── Portal restriction ────────────────────────────────────────────────
     # Super admin must login from admin panel; doctor/receptionist from clinic portal.
@@ -59,11 +59,11 @@ def login():
     if super_admin_url and clinic_url and super_admin_url != clinic_url:
         if admin.is_super_admin and origin and super_admin_url not in origin:
             return jsonify(
-                {"success": False, "error": "Super admin must login from the admin panel"}
+                {"success": False, "error": "Super admin must login from the admin panel", "message": "Super admin must login from the admin panel"}
             ), 403
         if not admin.is_super_admin and origin and clinic_url not in origin:
             return jsonify(
-                {"success": False, "error": "Please login from the clinic portal"}
+                {"success": False, "error": "Please login from the clinic portal", "message": "Please login from the clinic portal"}
             ), 403
 
     # Update login tracking

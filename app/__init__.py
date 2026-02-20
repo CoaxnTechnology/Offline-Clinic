@@ -209,6 +209,20 @@ def create_app(config_name=None):
         "MAX_CONTENT_LENGTH", 100 * 1024 * 1024
     )  # 100MB
 
+    # Ensure all JSON error responses have a "message" field for frontend
+    @app.after_request
+    def ensure_error_message(response):
+        """Copy 'error' to 'message' in JSON error responses so frontend can always read response.data.message"""
+        if response.status_code >= 400 and response.content_type and "application/json" in response.content_type:
+            try:
+                data = response.get_json(silent=True)
+                if data and "error" in data and "message" not in data:
+                    data["message"] = data["error"]
+                    response.set_data(__import__("json").dumps(data))
+            except Exception:
+                pass
+        return response
+
     # Security headers middleware
     @app.after_request
     def set_security_headers(response):
