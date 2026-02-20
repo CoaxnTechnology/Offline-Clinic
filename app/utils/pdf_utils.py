@@ -40,7 +40,8 @@ except ImportError:
 
 
 def generate_pdf_report(
-    study_instance_uid, patient=None, images=None, output_path=None, report_number=None
+    study_instance_uid, patient=None, images=None, output_path=None, report_number=None,
+    template=None, template_data=None, report=None,
 ):
     """
     Generate PDF report for a DICOM study using WeasyPrint
@@ -98,6 +99,9 @@ def generate_pdf_report(
         images=images,
         study_info=study_info,
         report_number=report_number,
+        template=template,
+        template_data=template_data,
+        report=report,
     )
 
     # Generate PDF
@@ -124,9 +128,29 @@ def generate_pdf_report(
 
 
 def generate_report_html(
-    study_instance_uid, patient=None, images=None, study_info=None, report_number=None
+    study_instance_uid, patient=None, images=None, study_info=None, report_number=None,
+    template=None, template_data=None, report=None,
 ):
     """Generate HTML content for PDF report"""
+
+    # --- Clinic header ---
+    clinic = None
+    clinic_name = ""
+    logo_html = ""
+    if report and report.clinic_id:
+        clinic = Clinic.query.get(report.clinic_id)
+    if clinic:
+        clinic_name = clinic.name or ""
+        if clinic.logo_path:
+            logo_path_fs = None
+            if os.path.isabs(clinic.logo_path):
+                logo_path_fs = clinic.logo_path
+            elif os.path.exists(os.path.join(Config.PROJECT_ROOT, clinic.logo_path)):
+                logo_path_fs = os.path.join(Config.PROJECT_ROOT, clinic.logo_path)
+            elif os.path.exists(clinic.logo_path):
+                logo_path_fs = clinic.logo_path
+            if logo_path_fs and os.path.exists(logo_path_fs):
+                logo_html = f'<img src="file://{logo_path_fs}" alt="Logo" style="height:60px;margin-right:10px;" />'
 
     patient_name = f"{patient.first_name} {patient.last_name}" if patient else "Unknown"
     patient_id = patient.id if patient else "N/A"
@@ -150,6 +174,34 @@ def generate_report_html(
 
     image_count = len(images) if images else 0
 
+    # Build clinic header block
+    if clinic:
+        clinic_addr = clinic.address or ""
+        clinic_phone = clinic.phone or ""
+        clinic_email = clinic.email or ""
+        header_html = f"""
+        <div class="header">
+            <div style="display:flex;align-items:center;">
+                {logo_html}
+                <div>
+                    <h1>{clinic_name}</h1>
+                    <p class="clinic-info">{clinic_addr}</p>
+                    <p class="clinic-info">{clinic_phone} {('&bull; ' + clinic_email) if clinic_email else ''}</p>
+                </div>
+            </div>
+            <p class="report-number">Report Number: {report_number or "N/A"}</p>
+            <p class="report-date">Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+        </div>
+        """
+    else:
+        header_html = f"""
+        <div class="header">
+            <h1>DICOM Study Report</h1>
+            <p class="report-number">Report Number: {report_number or "N/A"}</p>
+            <p class="report-date">Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+        </div>
+        """
+
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -158,12 +210,8 @@ def generate_report_html(
         <title>DICOM Study Report</title>
     </head>
     <body>
-        <div class="header">
-            <h1>DICOM Study Report</h1>
-            <p class="report-number">Report Number: {report_number or "N/A"}</p>
-            <p class="report-date">Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
-        </div>
-        
+        {header_html}
+
         <div class="section">
             <h2>Patient Information</h2>
             <table>
@@ -173,7 +221,7 @@ def generate_report_html(
                 <tr><td><strong>Gender:</strong></td><td>{patient_gender}</td></tr>
             </table>
         </div>
-        
+
         <div class="section">
             <h2>Study Information</h2>
             <table>
@@ -186,7 +234,58 @@ def generate_report_html(
                 <tr><td><strong>Institution:</strong></td><td>{institution}</td></tr>
             </table>
         </div>
-        
+    """
+
+    # --- Measurements section ---
+    if template_data:
+        template_name = template.name if template else "Measurements"
+        html += f"""
+        <div class="section">
+            <h2>{template_name}</h2>
+            <table>
+        """
+        if template:
+            # Use field definitions for labels and ordering
+            fields = template.get_fields()
+            # Render fields in template order, then any extra keys
+            rendered_codes = set()
+            for field in fields:
+                code = field["code"]
+                value = template_data.get(code)
+                if value is None or value == "":
+                    continue
+                label = field.get("label", code)
+                html += f"<tr><td><strong>{label}:</strong></td><td>{value}</td></tr>\n"
+                rendered_codes.add(code)
+            # Render any extra keys not in the template
+            for key, value in template_data.items():
+                if key not in rendered_codes and value is not None and value != "":
+                    label = key.replace("_", " ").title()
+                    html += f"<tr><td><strong>{label}:</strong></td><td>{value}</td></tr>\n"
+        else:
+            # No template — show raw key-value pairs
+            for key, value in template_data.items():
+                if value is None or value == "":
+                    continue
+                label = key.replace("_", " ").title()
+                html += f"<tr><td><strong>{label}:</strong></td><td>{value}</td></tr>\n"
+        html += """
+            </table>
+        </div>
+        """
+
+    # --- Notes section ---
+    notes = report.notes if report else None
+    if notes:
+        html += f"""
+        <div class="section">
+            <h2>Notes</h2>
+            <div class="notes-box">{notes}</div>
+        </div>
+        """
+
+    # --- Images summary ---
+    html += f"""
         <div class="section">
             <h2>Images Summary</h2>
             <p><strong>Total Images:</strong> {image_count}</p>
@@ -202,7 +301,7 @@ def generate_report_html(
 
     html += """
         </div>
-        
+
         <div class="footer">
             <p>This report was generated automatically from DICOM study data.</p>
             <p>Report generated by Clinic Backend System</p>
@@ -289,6 +388,20 @@ def get_report_css():
         text-align: center;
     }
     
+    .clinic-info {
+        margin: 2px 0;
+        font-size: 10pt;
+        color: #555;
+    }
+
+    .notes-box {
+        padding: 12px 15px;
+        background-color: #f9f9f9;
+        border-left: 4px solid #0066cc;
+        font-style: italic;
+        white-space: pre-wrap;
+    }
+
     .footer {
         margin-top: 30px;
         padding-top: 10px;

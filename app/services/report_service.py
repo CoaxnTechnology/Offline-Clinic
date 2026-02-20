@@ -105,34 +105,51 @@ def create_report(
 def generate_report_pdf(report: Report) -> str:
     """
     Generate PDF file for a report
-    
+
     Args:
         report: Report object
-    
+
     Returns:
         str: Path to generated PDF file
     """
+    import json
+    from app.models import ReportTemplate
+
     # Get patient and images
     patient = Patient.query.get(report.patient_id) if report.patient_id else None
     images = DicomImage.query.filter_by(study_instance_uid=report.study_instance_uid).all()
-    
+
+    # Load template and template_data for measurements
+    template = None
+    template_data = None
+    if report.template_id:
+        template = ReportTemplate.query.get(report.template_id)
+    if report.template_data:
+        try:
+            template_data = json.loads(report.template_data)
+        except (json.JSONDecodeError, TypeError):
+            template_data = None
+
     # Generate output path
     from app.config import Config
     reports_dir = Config.PDF_REPORTS_PATH
     os.makedirs(reports_dir, exist_ok=True, mode=0o755)
-    
+
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     safe_uid = report.study_instance_uid.replace('.', '_')[:50]
     output_path = os.path.join(reports_dir, f"report_{report.report_number}_{safe_uid}_{timestamp}.pdf")
     output_path = os.path.abspath(output_path)
-    
+
     # Generate PDF
     pdf_path = generate_pdf_report(
         study_instance_uid=report.study_instance_uid,
         patient=patient,
         images=images,
         output_path=output_path,
-        report_number=report.report_number
+        report_number=report.report_number,
+        template=template,
+        template_data=template_data,
+        report=report,
     )
     
     # Update report with file info
