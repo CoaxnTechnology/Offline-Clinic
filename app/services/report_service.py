@@ -130,6 +130,11 @@ def generate_report_pdf(report: Report) -> str:
         except (json.JSONDecodeError, TypeError):
             template_data = None
 
+    # Re-enrich calculated fields (safety net for reports created without enrichment)
+    if template_data and template:
+        from app.utils.ob_calculators import enrich_template_data
+        template_data = enrich_template_data(template_data, template.template_type)
+
     # Generate output path
     from app.config import Config
     reports_dir = Config.PDF_REPORTS_PATH

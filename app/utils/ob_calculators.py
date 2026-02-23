@@ -240,3 +240,68 @@ def get_efw_percentile(efw_grams, ga_weeks, gender=None):
         return 75.0
     else:
         return 95.0
+
+
+def enrich_template_data(template_data, template_type=None):
+    """Auto-calculate GA, EDD, EFW, and percentiles from raw measurements.
+
+    Only fills empty fields — if the doctor already entered a value, it won't be overwritten.
+    Returns an enriched copy; does not mutate the input.
+    """
+    if not template_data:
+        return template_data
+
+    data = dict(template_data)
+
+    # --- GA from CRL (1st trimester) ---
+    crl = data.get('crl')
+    if crl and not data.get('ga_weeks'):
+        ga = calculate_ga_from_crl(float(crl))
+        if ga:
+            data['ga_weeks'] = ga['weeks']
+            data['ga_days'] = ga['days']
+
+    # --- EDD from GA ---
+    ga_weeks = data.get('ga_weeks')
+    ga_days = data.get('ga_days', 0)
+    if ga_weeks and not data.get('edd'):
+        edd = calculate_edd_from_ga(int(ga_weeks), int(ga_days or 0))
+        if edd:
+            data['edd'] = edd.isoformat()
+
+    # --- EFW from biometry (Hadlock) ---
+    bpd = data.get('bpd')
+    hc = data.get('hc')
+    ac = data.get('ac')
+    fl = data.get('fl')
+    if all([bpd, hc, ac, fl]) and ga_weeks and not data.get('efw'):
+        efw = calculate_efw(float(bpd), float(hc), float(ac), float(fl), int(ga_weeks))
+        if efw:
+            data['efw'] = efw
+
+    # --- Percentiles ---
+    if ga_weeks:
+        gw = int(ga_weeks)
+        if bpd and not data.get('bpd_percentile'):
+            p = get_bpd_percentile(float(bpd), gw)
+            if p:
+                data['bpd_percentile'] = p
+        if hc and not data.get('hc_percentile'):
+            p = get_hc_percentile(float(hc), gw)
+            if p:
+                data['hc_percentile'] = p
+        if ac and not data.get('ac_percentile'):
+            p = get_ac_percentile(float(ac), gw)
+            if p:
+                data['ac_percentile'] = p
+        if fl and not data.get('fl_percentile'):
+            p = get_fl_percentile(float(fl), gw)
+            if p:
+                data['fl_percentile'] = p
+        efw_val = data.get('efw')
+        if efw_val and not data.get('efw_percentile'):
+            p = get_efw_percentile(float(efw_val), gw)
+            if p:
+                data['efw_percentile'] = p
+
+    return data

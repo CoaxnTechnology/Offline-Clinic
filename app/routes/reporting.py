@@ -182,7 +182,12 @@ def generate_report():
                     'success': False,
                     'error': 'template_data must be a JSON object with field values'
                 }), 400
-        
+
+        # Auto-calculate OB fields (GA, EDD, percentiles) from measurements
+        if template_data and template:
+            from app.utils.ob_calculators import enrich_template_data
+            template_data = enrich_template_data(template_data, template.template_type)
+
         # Find Visit if visit_id provided, or try to find by study_instance_uid
         visit = None
         if visit_id:
